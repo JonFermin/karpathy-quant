@@ -52,7 +52,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # Month-end rebalance.
     w = w.resample("ME").last().reindex(prices.index, method="ffill").fillna(0.0)
 
-    # Portfolio vol target: 12% annualized, gross cap 2.0, monthly-locked.
+    # Portfolio vol target: 12% annualized, gross ≤ 2.0, monthly-locked.
     port_rets = (w.shift(1) * rets).sum(axis=1)
     port_vol = port_rets.rolling(42).std() * (252 ** 0.5)
     scale = (0.12 / port_vol).clip(upper=2.0)
