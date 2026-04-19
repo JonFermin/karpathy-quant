@@ -38,7 +38,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # Emphasizes smooth winners; noisy high-return names get deflated.
     rets = prices.pct_change()  # daily returns
     vol = rets.rolling(126).std().shift(21)  # 126d realized daily vol
-    score = mom / vol
+    score = mom / vol  # risk-adjusted momentum
 
     # Selection: top decile of 6-1 risk-adj mom; crash-risk + data-quality filters.
     ranks = score.rank(axis=1, pct=True)  # cross-sectional percentile
