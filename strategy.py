@@ -30,8 +30,8 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
         T+1 execution — pre-shifting would double-delay your signal.
       - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
     """
-    # 12-month return, skipping the most recent month (classic 12-1 momentum)
-    mom = prices.pct_change(252).shift(21)
+    # 6-month return, skipping the most recent month (6-1 momentum)
+    mom = prices.pct_change(126).shift(21)
 
     # Risk-adjust: divide momentum by 126d realized vol of daily returns.
     # Emphasizes smooth winners; noisy high-return names get deflated.
