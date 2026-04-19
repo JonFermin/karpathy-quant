@@ -1,0 +1,14 @@
+[project]
+name = "karpathy-quant-auto-research"
+version = "0.1.0"
+description = "Autonomous quant strategy research loop (daily US equities)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "yfinance>=0.2.50",
+    "matplotlib>=3.9",
+    "jupyter>=1.1",
+]
