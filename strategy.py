@@ -59,7 +59,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
 
     # Portfolio vol targeting, monthly lock.
     port_rets = (w.shift(1) * rets).sum(axis=1)
-    port_vol = port_rets.rolling(42).std() * (252 ** 0.5)  # annual
+    port_vol = port_rets.rolling(42).std() * (252 ** 0.5)  # 42d std annualized
     # 12% vol target, gross capped at 2.0
     scale = (0.12 / port_vol).clip(upper=2.0)
     scale = scale.resample("ME").last().reindex(prices.index, method="ffill").fillna(1.0)  # monthly-locked
