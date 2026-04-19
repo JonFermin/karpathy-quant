@@ -31,9 +31,9 @@ Each experiment runs a vectorized daily-equity backtest, wrapped in a **5-minute
 - Modify the evaluation. `run_backtest` + `print_summary` in `prepare.py` are the ground truth.
 - Train or tune on the OOS slice. The IS/OOS split is trusted, not sandboxed — the honesty contract is that you do not inspect per-run OOS metrics and tune toward them. Form hypotheses on IS, then look at OOS as a verdict, not a gradient.
 
-**The goal is simple: get the highest `oos_sharpe`, subject to hard constraints on `max_drawdown` (must be ≤ 0.35) and `turnover_annual` (must be ≤ 50.0).** A high Sharpe that violates either constraint is a `discard`, not a `keep`.
+**The goal is simple: get the highest `oos_sharpe`, subject to hard constraints on `max_drawdown` (must be ≤ 0.35) and `turnover_annual` (must be ≤ 50.0).** A high Sharpe that violates either constraint is a `discard`, not a `keep`. Note that this is a *constrained* compare, not the monotone compare used in the upstream autoresearch loop: a run with higher Sharpe but a DD violation loses to a lower-Sharpe run that stays inside the box.
 
-**Overfitting discipline.** With 100 experiments, some high-Sharpe results will be luck. Prefer changes with *economic intuition* over parameter sweeps — a 5-line change with a thesis beats a grid-searched 10-hyperparam result. If a change improves OOS Sharpe but you can't articulate *why* the market would pay for that edge, you should be suspicious of it. Log the thesis in the description column so the human reviewer can evaluate it in the morning.
+**Overfitting discipline.** With 100 experiments, some high-Sharpe results will be luck. Prefer changes with *economic intuition* over parameter sweeps — a 5-line change with a thesis beats a grid-searched 10-hyperparam result. If a change improves OOS Sharpe but you can't articulate *why* the market would pay for that edge, you should be suspicious of it. Log the thesis in the description column with the literal prefix `thesis: ` so `grep '^thesis:' results.tsv` surfaces them for morning review. `log_result.py` enforces this for keep/discard rows.
 
 **Simplicity criterion**: All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. Conversely, removing something and getting equal or better results is a great outcome — that's a simplification win. When evaluating whether to keep a change, weigh the complexity cost against the improvement magnitude. A 0.05 Sharpe improvement that adds 30 lines of hacky code? Probably not worth it. A 0.05 Sharpe improvement from deleting code? Definitely keep.
 
@@ -46,6 +46,7 @@ Once the script finishes it prints a summary like this:
 ```
 ---
 oos_sharpe:       1.234567
+oos_sharpe_ci:    [0.812345, 1.623890]
 is_sharpe:        1.456789
 max_drawdown:     0.1823
 annual_return:    0.1245
@@ -54,16 +55,25 @@ turnover_annual:  5.23
 calmar:           0.6830
 num_trades:       1247
 backtest_seconds: 12.4
+oos_sharpe_2020:  1.122334
+oos_sharpe_2021:  0.998877
+oos_sharpe_2022:  1.345678
+oos_sharpe_2023:  1.211223
+oos_sharpe_2024:  1.456789
 status_hint:      keep_eligible
 ```
+
+`oos_sharpe_ci` is a 90% block-bootstrap interval. A 0.03 point-estimate improvement over `running_best` whose CI lower-bound is below `running_best` is almost certainly noise. `oos_sharpe_YYYY` decomposes the headline by year — a strategy whose OOS Sharpe lives entirely in 2020 is very different from one that's flat-per-year.
 
 Extract the headline metrics from the log file:
 
 ```
-grep "^oos_sharpe:\|^max_drawdown:\|^turnover_annual:" run.log
+grep "^oos_sharpe\|^max_drawdown:\|^turnover_annual:\|^num_trades:" run.log
 ```
 
 If the grep output is empty, the run crashed. `status_hint` is informational — `keep_eligible` / `force_discard` / `crash` — but the real keep/discard rule below is what you apply.
+
+**Strict honesty mode (`SHOW_OOS=0`).** If you launch the experiment with `SHOW_OOS=0 uv run strategy.py`, OOS-derived lines are masked as `<hidden, SHOW_OOS=0>` in `run.log` and the full metrics go to a side-channel `oos_results.tsv` the reviewer reads in the morning. In this mode: form hypotheses on `is_sharpe`, use `status_hint` for pass/fail, and use `uv run running_best.py` to get a single number for the comparison. Do **not** `cat oos_results.tsv` during the loop — that defeats the whole point.
 
 ## Logging results
 
@@ -86,11 +96,13 @@ Example:
 
 ```
 commit	oos_sharpe	max_dd	turnover	status	description
-a1b2c3d	0.423100	0.1823	5.23	keep	baseline: 12-1 momentum monthly rebalance top decile
-b2c3d4e	0.512800	0.1902	8.71	keep	add 6mo short-term reversal overlay (mean-rev on recent losers)
-c3d4e5f	0.380200	0.1712	4.90	discard	widen decile to top quintile — signal dilution
+a1b2c3d	0.423100	0.1823	5.23	keep	thesis: 12-1 momentum, 12m lookback with 1m skip harvests the momentum anomaly net of short-term reversal
+b2c3d4e	0.512800	0.1902	8.71	keep	thesis: layering a 21d short-term reversal picks up the opposite effect at the short horizon
+c3d4e5f	0.380200	0.1712	4.90	discard	thesis: widening to top quintile dilutes the signal — expected, confirmed
 d4e5f6g	0.000000	0.0000	0.00	crash	attempt vol targeting, divide-by-zero on flat days
 ```
+
+Prefer `uv run log_result.py <status> "thesis: ..."` — it reads run.log, formats the row correctly, and rejects keep/discard rows that are missing the `thesis:` prefix.
 
 ## The experiment loop
 
@@ -104,10 +116,10 @@ LOOP FOREVER:
 4. Run the experiment: `uv run strategy.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
 5. Read out the results: `grep "^oos_sharpe:\|^max_drawdown:\|^turnover_annual:\|^num_trades:" run.log`
 6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
-7. Decide the status using the **keep rule**:
-   - `keep` if and only if: `oos_sharpe > running_best` AND `max_drawdown ≤ 0.35` AND `turnover_annual ≤ 50.0` AND `num_trades ≥ 50`
-   - `discard` if the run finished cleanly but fails the keep rule (including when OOS didn't improve)
-   - `crash` if the grep was empty, or any headline metric is NaN/inf
+7. Decide the status using the **keep rule**. Get the current best with `uv run running_best.py` (single number to stderr if no kept rows yet):
+   - `keep` iff: `oos_sharpe > running_best` AND `oos_sharpe_ci_lo > running_best - 0.1` AND `max_drawdown ≤ 0.35` AND `turnover_annual ≤ 50.0` AND `num_trades ≥ 50`
+   - `discard` if the run finished cleanly but fails the keep rule (including when OOS didn't improve, or when the CI lower bound is well below prior best — i.e. the "improvement" is inside the noise band)
+   - `crash` if the grep was empty, any headline metric is NaN/inf, or the harness returned `status_hint=crash` with a `crash_reason`
 8. Record the row in `results.tsv` (NOTE: do not commit the `results.tsv` file — leave it untracked by git)
 9. If `keep`: advance the branch, keeping the git commit.
 10. If `discard` or `crash`: `git reset --hard HEAD~1` back to where you started.

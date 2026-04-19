@@ -54,6 +54,10 @@ strategy.py                 — signal + weights (agent modifies this)
 program.md                  — agent instructions
 universe_sp100_2024.json    — frozen ticker list (checked in)
 analysis.ipynb              — notebook for reviewing results.tsv
+running_best.py             — CLI: current best kept oos_sharpe
+log_result.py               — CLI: append a row to results.tsv from run.log
+walkforward.py              — CLI: per-fold Sharpe sanity check for a strategy
+test_lookahead.py           — regression test for the T+1 shift
 pyproject.toml              — dependencies
 ```
 
@@ -61,15 +65,17 @@ pyproject.toml              — dependencies
 
 - **Single file to modify.** The agent only touches `strategy.py`. This keeps scope manageable and diffs reviewable.
 - **T+1 shift enforced in the harness.** The weights your strategy produces using data up to day `t` only take effect at the close of day `t+1`. This is done inside `run_backtest` — the strategy cannot bypass it without editing `prepare.py`, which is forbidden.
-- **Single IS/OOS split, not walk-forward.** 2010–2019 is IS, 2020–2024 is OOS. v1 deliberately keeps this simple; walk-forward CV and deflated Sharpe are post-hoc analyses computable from `results.tsv`.
-- **Trust-based IS/OOS honesty.** `run_backtest` reports both splits on every run; nothing prevents the agent from optimizing OOS directly. This matches the autoresearch pattern (the LLM version trusts the agent not to train on the val shard). The program.md calls out the honesty contract explicitly.
+- **Single IS/OOS split, not walk-forward.** 2010–2019 is IS, 2020–2024 is OOS. The research loop uses this single split so the agent can run hundreds of experiments cheaply; `walkforward.py` (5 non-overlapping 2-year folds, 2014–2023) and deflated Sharpe in `analysis.ipynb` are morning-review analyses layered on top of kept rows.
+- **Trust-based IS/OOS honesty with an optional strict mode.** `run_backtest` reports both splits on every run; set `SHOW_OOS=0` in the environment and OOS-derived lines are masked in `run.log`, with the full audit trail written to a side-channel `oos_results.tsv` the reviewer consults. The agent forms hypotheses on `is_sharpe` and uses `status_hint` + `running_best.py` to gate keep/discard.
+- **Bootstrap CI on OOS Sharpe.** A stationary block bootstrap (200 resamples, 20-day blocks) is reported with every run. The keep rule tightens to `ci_lo > running_best - 0.1` so a 0.03 "improvement" that lives inside the noise band is not kept.
+- **Per-year OOS Sharpe decomposition.** Each run emits `oos_sharpe_2020..2024` so a single-year driver (e.g. a 2020 vol harvest) is visible instead of hidden inside the headline.
 - **Hard constraints are blunt.** Max-DD and turnover caps keep degenerate strategies (leveraged martingale, daily-rebalance parameter fits) out of the `keep` list. They don't guarantee the strategy is good — just that it isn't obviously broken.
 
 ## Caveats / disclaimers
 
 This repo is designed for **research process, not production alpha.** Known issues with the backtest:
 
-- **Survivorship bias.** The universe is a frozen 2024-dated SP100 snapshot. Any ticker that was delisted, renamed, or added after 2024-12-31 is treated as if it had its current status for the whole 2010–2024 window. Results are biased upward relative to a point-in-time membership backtest.
+- **Survivorship bias.** The universe is a frozen 2024-dated SP100 snapshot. Any ticker that was delisted or renamed before 2024-12-31 is silently absent; `run_backtest` does force weights to 0 on tickers that have no price data yet (mitigating IPO-era leakage for e.g. META, ABBV, TSLA), but a proper point-in-time membership schedule is not yet supplied. Results are biased upward relative to a real PIT backtest.
 - **Data fidelity.** Prices come from yfinance (free, unaudited, adjusted closes). Corporate-action handling, dividend handling, and split adjustments follow yfinance's conventions. Gaps and errors are not corrected.
 - **Cost model is crude.** 5bps per side + 200bps annual borrow on shorts. No market-impact model, no bid/ask, no capacity analysis.
 - **No deployment.** There is no broker integration, no paper trading, no live signal generation. A good `oos_sharpe` in this repo is *not* a trade-ready signal — it is a hypothesis that survived one specific backtest.

@@ -19,5 +19,8 @@ dev/
 results.tsv
 run.log
 
+# Side-channel OOS audit log written by the harness (agent must NOT cat)
+oos_results.tsv
+
 # Jupyter
 .ipynb_checkpoints/
