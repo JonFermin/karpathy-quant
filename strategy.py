@@ -37,7 +37,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # Risk-adjust: divide momentum by 126d realized vol of daily returns.
     # Emphasizes smooth winners; noisy high-return names get deflated.
     rets = prices.pct_change()
-    vol = rets.rolling(126).std().shift(21)  # 126d realized vol
+    vol = rets.rolling(126).std().shift(21)  # 126d realized daily vol
     score = mom / vol
 
     # Selection: top decile of 6-1 risk-adj mom; crash-risk + data-quality filters.
