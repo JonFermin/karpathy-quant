@@ -32,6 +32,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     """
     # 6-month return, skipping the most recent month (6-1 momentum)
     # 126d lookback, 21d skip (classic 6-1 momentum)
+    # 6-1 momentum
     mom = prices.pct_change(126).shift(21)
 
     # Risk-adjust: divide momentum by 126d realized vol of daily returns.
