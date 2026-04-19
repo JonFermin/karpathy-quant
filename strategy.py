@@ -39,7 +39,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     vol = rets.rolling(126).std().shift(21)
     # Floor vol at cross-sectional 25th percentile per day so super-low-vol names
     # don't get artificially inflated mom/vol scores.
-    vol_floor = vol.quantile(0.25, axis=1)
+    vol_floor = vol.quantile(0.5, axis=1)
     vol = vol.clip(lower=vol_floor, axis=0)
     score = mom / vol
 
