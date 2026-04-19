@@ -45,7 +45,6 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     skew = rets.rolling(126).skew().shift(21)
     vol_rank = vol.rank(axis=1, pct=True)
     # Crash-risk filter (skew) + data-quality filter (vol not bottom 10pct).
-    # Combined filter
     keep = (ranks >= 0.9) & (skew > -0.5) & (vol_rank > 0.1)
     w = keep.astype(float)
 
