@@ -33,7 +33,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # 6-1 momentum: 126d return skipping the most recent 21d.
     mom = prices.pct_change(126).shift(21)
 
-    # Risk-adjust: divide by 126d realized daily-return vol.
+    # Risk-adjust: divide 6-1 mom by 126d realized daily-return vol.
     rets = prices.pct_change()
     vol = rets.rolling(126).std().shift(21)
     score = mom / vol
