@@ -46,7 +46,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     vol_rank = vol.rank(axis=1, pct=True)  # cross-sectional vol percentile
     # Keep: top decile + skew > -0.5 (crash-risk) + vol_rank > 0.1 (data-quality).
     keep = (ranks >= 0.9) & (skew > -0.5) & (vol_rank > 0.1)
-    w = keep.astype(float)  # binary weights pre-normalization
+    w = keep.astype(float)  # binary, normalize below
 
     # Normalize each row to gross leverage 1.0 (or 0 if nothing qualifies yet).
     # Normalize to gross leverage 1.0
