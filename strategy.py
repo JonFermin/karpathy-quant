@@ -44,6 +44,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     ranks = score.rank(axis=1, pct=True)
     skew = rets.rolling(126).skew().shift(21)
     vol_rank = vol.rank(axis=1, pct=True)
+    # Crash-risk filter (skew) + data-quality filter (vol not bottom 10pct).
     w = ((ranks >= 0.9) & (skew > -0.5) & (vol_rank > 0.1)).astype(float)
 
     # Normalize each row to gross leverage 1.0 (or 0 if nothing qualifies yet).
