@@ -38,7 +38,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     vol = rets.rolling(126).std().shift(21)
     score = mom / vol
 
-    # Selection: top decile + skew > -0.5 (crash-risk) + vol_rank > 0.1 (data-quality).
+    # Selection: top-decile + skew > -0.5 (crash-risk) + vol_rank > 0.1 (data-quality).
     ranks = score.rank(axis=1, pct=True)
     skew = rets.rolling(126).skew().shift(21)
     vol_rank = vol.rank(axis=1, pct=True)
