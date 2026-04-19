@@ -54,7 +54,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     row_sum = w.sum(axis=1).replace(0, 1)
     w = w.div(row_sum, axis=0)
 
-    # Monthly rebalance; forward-fill weights daily.
+    # Monthly rebal, ffill daily.
     w = w.resample("ME").last().reindex(prices.index, method="ffill").fillna(0.0)
 
     # Portfolio-level vol targeting, monthly scale lock.
