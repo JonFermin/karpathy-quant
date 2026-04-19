@@ -44,8 +44,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     ranks = score.rank(axis=1, pct=True)  # cross-sectional percentile
     skew = rets.rolling(126).skew().shift(21)  # rolling 126d skew
     vol_rank = vol.rank(axis=1, pct=True)  # cross-sectional vol percentile
-    # Crash-risk filter (skew) + data-quality filter (vol not bottom 10pct).
-    # top decile + skew gate + vol-rank gate
+    # Keep: top decile + skew > -0.5 (crash-risk) + vol_rank > 0.1 (data-quality).
     keep = (ranks >= 0.9) & (skew > -0.5) & (vol_rank > 0.1)
     w = keep.astype(float)  # binary weights pre-normalization
 
