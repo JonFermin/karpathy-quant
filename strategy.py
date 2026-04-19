@@ -33,11 +33,10 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # 6-1 momentum: 126d return skipping last 21d.
     mom = prices.pct_change(126).shift(21)
 
-    # Risk-adjust: divide momentum by 126d realized vol of daily returns.
-    # Emphasizes smooth winners; noisy high-return names get deflated.
-    rets = prices.pct_change()  # daily returns
-    vol = rets.rolling(126).std().shift(21)  # 126d realized daily vol
-    score = mom / vol  # risk-adjusted momentum
+    # Risk-adjust: divide by 126d realized daily-return vol.
+    rets = prices.pct_change()
+    vol = rets.rolling(126).std().shift(21)
+    score = mom / vol
 
     # Selection: top decile of 6-1 risk-adj mom; crash-risk + data-quality filters.
     ranks = score.rank(axis=1, pct=True)  # cross-sectional percentile
