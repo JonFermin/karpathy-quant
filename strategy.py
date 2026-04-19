@@ -40,7 +40,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     vol = rets.rolling(126).std().shift(21)
     score = mom / vol
 
-    # Top decile by 6-1 risk-adj momentum; filter crash-risk names.
+    # Selection: top decile of 6-1 risk-adj mom; crash-risk + data-quality filters.
     ranks = score.rank(axis=1, pct=True)
     skew = rets.rolling(126).skew().shift(21)
     vol_rank = vol.rank(axis=1, pct=True)
