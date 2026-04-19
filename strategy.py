@@ -57,8 +57,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # Monthly rebalance.
     w = w.resample("ME").last().reindex(prices.index, method="ffill").fillna(0.0)
 
-    # Portfolio-level vol targeting with monthly scale lock.
-    # realized portfolio returns from shifted weights
+    # Portfolio-level vol targeting, monthly scale lock.
     port_rets = (w.shift(1) * rets).sum(axis=1)
     port_vol = port_rets.rolling(42).std() * (252 ** 0.5)  # annualized
     # Scale based on target 12pct vol.
