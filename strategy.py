@@ -37,6 +37,10 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # Emphasizes smooth winners; noisy high-return names get deflated.
     rets = prices.pct_change()
     vol = rets.rolling(126).std().shift(21)
+    # Floor vol at cross-sectional 25th percentile per day so super-low-vol names
+    # don't get artificially inflated mom/vol scores.
+    vol_floor = vol.quantile(0.25, axis=1)
+    vol = vol.clip(lower=vol_floor, axis=0)
     score = mom / vol
 
     # Cross-sectional rank → long the top decile (rank ≥ 0.9), equal-weight.
