@@ -45,7 +45,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     keep = (ranks >= 0.9) & (skew > -0.5) & (vol_rank > 0.1)
     w = keep.astype(float)
 
-    # Normalize rows: gross 1.0 (0 if empty).
+    # Normalize per row to gross 1.0 (0 if empty).
     row_sum = w.sum(axis=1).replace(0, 1)
     w = w.div(row_sum, axis=0)
 
