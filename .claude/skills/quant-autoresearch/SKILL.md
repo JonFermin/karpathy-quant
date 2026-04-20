@@ -82,9 +82,14 @@ SHOW_OOS=0 uv run strategy.py > run.log 2>&1
 grep "^is_sharpe:\|^max_drawdown:\|^turnover_annual:\|^num_trades:\|^status_hint:" run.log
 # If empty → crash. tail -n 50 run.log to read the trace.
 
-# 5. Log the row (grader writes status, not you)
-uv run log_result.py "thesis: <one-line rationale>"
-echo "exit=$?"
+# 5. Log the row (grader writes status, not you).
+#    CRITICAL: log_result.py leaks the OOS sharpe on BOTH streams under SHOW_OOS=0:
+#      - stdout "logged: <commit> <oos_sharpe> <max_dd> <turnover> ..." (the row it wrote)
+#      - stderr "grader: <status> (oos_sharpe 0.4231 > hurdle 0.5912 ...)" (the verdict reason)
+#    Mute both and surface only the machine-parseable `status=` trailer.
+out=$(uv run log_result.py "thesis: <one-line rationale>" 2>/dev/null); rc=$?
+echo "$out" | grep '^status=' || true
+echo "exit=$rc"
 
 # 6. Branch on exit code:
 #    0 → parse "status=keep" or "status=discard" from last stdout line
@@ -106,15 +111,25 @@ uv run running_best.py              # single number: best kept oos_sharpe so far
 uv run running_best.py --baseline   # seed row's oos_sharpe
 uv run running_best.py --trials     # rows on this branch (cap awareness)
 git log --oneline -10               # recent experiment commits
-grep '^thesis:' results.tsv         # scan your hypothesis history
-grep '^keep' results.tsv            # survivors so far
+
+# results.tsv is tab-separated (cols: commit oos_sharpe max_dd turnover status description).
+# NEVER cat it whole and NEVER grep line-start — cols 2/3/4 leak OOS-sensitive numbers.
+# Only read the commit (col 1) and description (col 6) via awk:
+awk -F'\t' 'NR>1 {print $1, $6}' results.tsv          # full hypothesis history
+awk -F'\t' 'NR>1 && $5=="keep" {print $1, $6}' results.tsv     # survivors so far
 ```
 
 Do NOT run `cat oos_results.tsv` during the loop. Do NOT `grep oos_sharpe_2` or any per-year OOS. If you catch yourself about to peek, stop.
 
 ### First iteration (baseline)
 
-`log_result.py` requires a real code change against `HEAD~1`, so the baseline needs a tiny scaffolding commit to anchor it. Make the first iteration a genuine minimal tweak — e.g. a single-line guard, a rename, a clarifying refactor — then run the full loop above. This produces the first `oos_results.tsv` row that becomes the fixed baseline anchor. Subsequent keeps are judged against this anchor, not the running max.
+`log_result.py` requires a real code change against `HEAD~1`, so the baseline needs a tiny scaffolding commit to anchor it. Make the first iteration a genuine minimal tweak — e.g. a single-line guard, or a rename of an internal helper. Avoid docstring-only edits: `_strip_docstrings` erases them before the AST diff, so a pure docstring rewrite gets rejected as exit 3 (no-op).
+
+**The first non-crash commit on the branch becomes the permanent baseline anchor.** Every subsequent keep is judged against it, not the running max. That means:
+
+- Your first iteration must be **trivial / strategy-neutral** — do NOT put a real idea in trial #1. If it happens to score well by luck, the hurdle for every later idea is inflated forever.
+- If trial #1 crashes (exit 5 → `git reset --hard HEAD~1`), trial #2 becomes the effective first trial and anchors the baseline. That's fine, but it means you get at most one retry before the anchor is locked — make trial #2 just as neutral as trial #1 was supposed to be.
+- Do not try to "tune" the baseline by running variants until one feels right. The very first non-crash commit wins.
 
 ## Hypothesis discipline
 
@@ -143,32 +158,32 @@ On a **graceful** stop (cases 1 and 3 below), run the **Archive + push + cleanup
 # (from inside worktrees/<tag>)
 
 # 1. Build SUMMARY.md — capture the full audit trail in a committed file.
-cat > SUMMARY.md <<EOF
-# quant-research/<tag>
+#    Build in pieces (NOT a single unquoted heredoc): thesis strings in results.tsv
+#    are agent-authored and may contain `$(...)`, backticks, or `\` that would be
+#    re-evaluated by bash inside `<<EOF`. Here they pass through cat/awk only.
+baseline_line=$(uv run running_best.py --baseline --verbose 2>/dev/null || echo "n/a")
+running_line=$(uv run running_best.py --verbose 2>/dev/null || echo "no kept rows")
+trials_line=$(uv run running_best.py --trials 2>/dev/null || echo "0")
 
-- **UNIVERSE_TAG**: <tag value, or "sp100_2024 (default)">
-- **Baseline (seed)**: $(uv run running_best.py --baseline --verbose 2>/dev/null || echo "n/a")
-- **Running best**:   $(uv run running_best.py --verbose 2>/dev/null || echo "no kept rows")
-- **Trials logged**:  $(uv run running_best.py --trials 2>/dev/null || echo "0")
-- **Stop reason**:    <trial-cap | no-defensible-hypothesis | …>
-
-## results.tsv
-
-\`\`\`
-$(cat results.tsv)
-\`\`\`
-
-## Theses by status
-
-### keep
-$(awk -F'\t' 'NR>1 && $5=="keep"  {print "- " $6}' results.tsv)
-
-### discard
-$(awk -F'\t' 'NR>1 && $5=="discard"{print "- " $6}' results.tsv)
-
-### crash
-$(awk -F'\t' 'NR>1 && $5=="crash"  {print "- " $6}' results.tsv)
-EOF
+{
+  printf '# quant-research/<tag>\n\n'
+  printf -- '- **UNIVERSE_TAG**: <tag value, or "sp100_2024 (default)">\n'
+  printf -- '- **Baseline (seed)**: %s\n' "$baseline_line"
+  printf -- '- **Running best**:   %s\n' "$running_line"
+  printf -- '- **Trials logged**:  %s\n' "$trials_line"
+  printf -- '- **Stop reason**:    <trial-cap | no-defensible-hypothesis | …>\n\n'
+  printf '## results.tsv\n\n'
+  printf '```\n'
+  cat results.tsv
+  printf '```\n\n'
+  printf '## Theses by status\n\n'
+  printf '### keep\n'
+  awk -F'\t' 'NR>1 && $5=="keep"    {print "- " $6}' results.tsv
+  printf '\n### discard\n'
+  awk -F'\t' 'NR>1 && $5=="discard" {print "- " $6}' results.tsv
+  printf '\n### crash\n'
+  awk -F'\t' 'NR>1 && $5=="crash"   {print "- " $6}' results.tsv
+} > SUMMARY.md
 
 # 2. Commit the summary.
 git add SUMMARY.md
@@ -184,7 +199,9 @@ fi
 # 4. Only remove the worktree if the push succeeded (or no remote was expected).
 #    If push failed, STOP and tell the human — do not silently lose the branch state.
 cd ../..    # back to repo root
-if git branch -r | grep -q "origin/quant-research/<tag>"; then
+# Exact-match check — `grep -q origin/quant-research/<tag>` would prefix-match a
+# sibling branch (e.g. apr19-2237 vs apr19-223742) and nuke the wrong worktree.
+if git rev-parse --verify --quiet refs/remotes/origin/quant-research/<tag> >/dev/null; then
   git worktree remove worktrees/<tag>
   echo "archived and cleaned up: quant-research/<tag> pushed to origin"
 else
