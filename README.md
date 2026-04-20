@@ -1,178 +1,190 @@
 # karpathy-quant-auto-research
 
-A direct port of Andrej Karpathy's [`karpathy/autoresearch`](https://github.com/karpathy/autoresearch) pattern — single agent-editable file, immutable harness, IS/OOS gate, git-native experiment trail — applied to daily US equity strategy search instead of LLM pretraining tweaks.
+Andrej Karpathy made a repo called [autoresearch](https://github.com/karpathy/autoresearch) where an AI agent edits one file, runs an experiment, keeps the change if it improved a score, and tries again. He used it for tweaking small language models. This repo does the same thing but for stock trading strategies.
 
-Karpathy's repo works because nanoGPT loss is a clean, low-noise objective: a 1% val-loss improvement is real and reproduces. **OOS Sharpe on a 5-year window is not that.** Porting the loop unchanged would produce a beautiful audit trail of an agent successfully p-hacking itself into a corner. Most of the work in this repo is the machinery to keep that from happening — and an honest accounting of where it still does.
+The catch is that stock returns are extremely noisy. The original loop does not survive the move without a lot of extra safety rails.
 
-If the original is "let an agent iterate on a clean signal," this fork is "let an agent iterate on a signal so noisy that the loop itself is the main hazard."
+## The big problem, in one paragraph
 
-## The premise, and why it's dangerous
+Imagine you ask 200 friends to each pick 10 stocks at random. Some friends will get lucky and beat the market by a lot. If you then point at the lucky friend and say "this person is good at picking stocks," you have fooled yourself. That is exactly what happens when an AI tries 200 strategies and you keep the one with the best score. The score is real, the skill is not. This repo is mostly a list of tricks to make that kind of self fooling harder, plus an honest list of where it still happens.
 
-The setup is straightforward: an AI agent edits one file (`strategy.py`), runs a backtest against a frozen IS/OOS split, checks if OOS Sharpe improved subject to hard constraints, keeps or discards, repeats. You wake up to ~100 logged experiments and a current-best branch.
+If you take a green row in the results file at face value, the loop has tricked you. Sorry.
 
-The danger is also straightforward and worth stating up front:
+## What it actually does
 
-**A loop that runs hundreds of trials against a fixed out-of-sample slice is a multiple-testing engine.** With OOS Sharpe noise of roughly ±0.5 (90% CI) on this 5-year window, the expected best-of-200 looks impressive even if every underlying strategy is pure coin-flipping. If you take the headline number from a green row at face value, the agent has fooled you. The interesting question this repo tries to answer is not "can an agent find alpha" — it's "can the loop be instrumented to make most of its own false positives visible?"
-
-Spoiler: **partially**. There is no clever trick that makes a fixed-OOS search statistically clean. The repo trades in honest mitigations and an explicit list of where leakage remains.
-
-This is research process, not a product. There is no live deployment, no broker connection, no paper-trading link.
-
-## How it works
+You start the script. The AI picks a trading idea, writes it into `strategy.py`, runs a backtest on US stocks from 2010 to 2024, and checks if it beat the previous best on the 2020 to 2024 part. If yes, it keeps the change and tries to improve on it. If no, it throws the change away and tries something else. By morning you have a log of about 100 attempts and a current best.
 
 Three files matter:
 
-- **`prepare.py`** — fixed constants, one-time data prep (downloads adjusted closes via yfinance), and the backtest engine (`run_backtest`, `print_summary`, `TimeBudget`). The T+1 execution shift lives inside `run_backtest` so the agent cannot accidentally introduce look-ahead. **Not modified.**
-- **`strategy.py`** — the single file the agent edits. Contains `generate_weights(prices) → weights` and a driver that calls `run_backtest`. Everything inside `generate_weights` is fair game: signals, sizing, regime filters, rebalancing cadence, neutralization.
-- **`program.md`** — agent instructions. Edited and iterated on by the human between runs.
+- `prepare.py`: downloads stock prices and runs the backtest. The AI is not allowed to touch this.
+- `strategy.py`: where the AI writes its trading idea. The only file it can edit.
+- `program.md`: the rules the AI follows. You edit this between runs as you learn what works.
 
-The metric is **`oos_sharpe`** on the 2020–2024 slice, subject to `max_drawdown ≤ 0.35` and `turnover_annual ≤ 50.0`. Constraint violations are force-discarded regardless of headline Sharpe.
+The score is called OOS Sharpe. Higher is better. Two safety rules: the strategy cannot lose more than 35% at its worst point, and it cannot trade more than 50 times its own size per year. Anything that breaks those rules gets thrown out no matter how good the score looks.
 
-## The baseline
+## Some words you need to know
 
-`strategy.py` ships with **12-1 cross-sectional momentum**, the hurdle every experiment has to clear. Five lines of real logic:
+A few terms come up a lot.
 
-```python
-mom = prices.pct_change(252).shift(21)      # 12-month return, skip last month
-ranks = mom.rank(axis=1, pct=True)          # rank across the universe each day
-w = (ranks >= 0.9).astype(float)            # long the top 10% of names
-w = w.div(w.sum(axis=1).replace(0, 1), axis=0)  # equal-weight, gross = 1
-w = w.resample("ME").last().reindex(prices.index, method="ffill").fillna(0.0)  # hold monthly
-```
+**In sample (IS) and out of sample (OOS).** We split the data into two pieces. The 2010 to 2019 piece is "in sample," which is the practice exam. The 2020 to 2024 piece is "out of sample," the real exam. The whole point is to invent a strategy using the practice exam and only check the real exam at the end. If you keep peeking at the real exam and tweaking your answer, the real exam stops being real.
 
-Plain English: **every month, buy the 10 S&P 100 names that went up the most over the last 12 months — ignoring the most recent month — and hold them.** On this harness it lands at OOS Sharpe ≈ 0.92, max drawdown ≈ 0.32, turnover ~6/yr.
+**Sharpe ratio.** A number that goes up when a strategy makes more money for less risk. A Sharpe of 1 is good. A Sharpe of 2 is suspicious. A Sharpe of 5 means you made a mistake.
 
-### Why this is the baseline
+**Drawdown.** The biggest peak to bottom loss the strategy goes through. A 35% drawdown means at some point you were down 35% from your previous high.
 
-12-1 momentum is probably the single most-studied anomaly in equities. Jegadeesh & Titman (1993) documented it in US stocks. Asness, Moskowitz & Pedersen (2013) found it in 8 asset classes across 40 countries. Fama & French (2012) added it as a fourth factor. It has survived ~30 years of post-publication live performance, which is rare for a quant signal. Two competing explanations: behavioral underreaction (information diffuses slowly) and risk premium (it crashes hard — ~73% drawdown for US long-short in 2009 — and investors demand compensation).
+**Turnover.** How much the strategy buys and sells. A turnover of 1 per year means it replaces its whole portfolio once a year. A turnover of 50 means it churns through everything 50 times a year, which is a lot.
 
-Skipping the last month matters because short-horizon returns (1 day to 1 month) show the **opposite** effect — recent winners pull back, recent losers bounce (Lehmann 1990, Jegadeesh 1990). The "12-1" convention separates the two.
+## The starting strategy
 
-### Why it's hard to beat here
+The AI starts with something called 12-1 momentum. Plain English: every month, look at how each stock did over the past 12 months (but skip the most recent month), buy the 10 best, hold for a month, repeat.
 
-- **It's the right answer for this universe.** Momentum is a real, persistent effect. Most "improvements" an agent invents are either fitting IS noise or rediscovering a component of the same signal under a different name.
-- **SP100 is a narrow, rigged universe.** 100 survivorship-selected large-caps frozen at 2024: anything you bought in 2010 made it to 2024. The baseline already eats the survivorship premium for free.
-- **The harness is honest about noise.** Bootstrap CIs on OOS Sharpe are wide. A 0.03–0.10 "improvement" lives inside the band. The keep rule kills most of it.
+Why skip the most recent month? Because over very short windows (a day to a month), winners tend to give back some of their gains. Mixing that in with the 12 month signal weakens it. Skipping one month separates the two effects.
 
-The baseline is not a strawman. Beating it with a genuinely new idea is the point of the loop. Most of the time, the correct finding is that you didn't.
+This is one of the oldest and most studied patterns in finance. People have been writing papers about it since 1993 and it has kept working in live money for about 30 years after publication. It is the right answer for this kind of problem and it is hard to beat.
 
-## P-hacking: prevention and remaining leaks
+On our setup it gets an OOS Sharpe of about 0.92, a worst drawdown of about 32%, and trades roughly six times a year.
 
-This is the section that drove the rewrite. Read it before getting excited about any number this repo prints.
+## Why beating the starter is hard
 
-### What the harness does to push back
+Three reasons.
 
-- **Strict-honesty mode (`SHOW_OOS=0`).** During the loop, every OOS-derived line in `run.log` is masked. The agent sees `is_sharpe`, hard-constraint flags, and a `status_hint` derived from IS — it does **not** see `oos_sharpe`, the per-year decomposition, or the bootstrap CI. The full OOS audit trail goes to a side-channel `oos_results.tsv` only the human reads. The agent literally cannot gradient-descend on OOS, because it cannot observe it.
-- **Bootstrap CI with a tightened keep rule.** Each run reports a stationary block bootstrap (200 resamples, 20-day blocks). Keep requires `ci_lo > running_best - 0.1`, not just `oos_sharpe > running_best`. A 0.03 "win" inside the noise band is rejected.
-- **Per-year OOS decomposition.** Every run emits `oos_sharpe_2020..2024`. A strategy scoring 1.4 by riding 2020 vol and being mediocre 2021–2024 is visible at a glance.
-- **Walk-forward (`walkforward.py`).** Five non-overlapping 2-year folds, 2014–2023. Strategies that look great on the headline OOS but inconsistent across folds get caught here in morning review.
-- **Deflated Sharpe in `analysis.ipynb`.** Bailey & López de Prado's deflated Sharpe explicitly adjusts for the number of trials and the variance of trial Sharpes. It's the right statistic for "is this best-of-N actually significant," and it's the one to consult before getting excited about a green row.
-- **Hard constraints up front.** Max-DD ≤ 0.35 and turnover ≤ 50/yr eliminate the worst classes of degenerate fits before they enter the keep pool.
-- **Single-file scope + git audit trail.** Every trial is a commit; `results.tsv` logs the description. Reviewing the *full* set of attempts (not just survivors) is the protection against survivorship bias inside the experiment log itself.
+First, momentum is real. So most "improvements" the AI invents are either fitting noise, or rediscovering the same signal in a different shape.
 
-### Where it still leaks
+Second, the data is rigged in momentum's favor. We use the S&P 100 frozen at the end of 2024. Every name on the list is a company that survived all the way to 2024. Strategies that bet on "winners keep winning" get a free boost from this and there is no clean way to turn it off.
 
-- **The OOS slice is fixed and reused.** Strict-honesty stops the agent, but the *human* sees OOS between sessions, edits `program.md` based on what's working, and reruns. That is a slow but real OOS-contamination loop with no cryptographic fix short of escrowing a slice neither agent nor human ever inspects.
-- **Strict-honesty is honor-system.** A clever-enough agent could in principle infer OOS performance from IS/OOS divergence patterns or from `status_hint`. Mitigation is "the agent isn't trying to" — not a security property.
-- **Keep rule still uses `running_best`.** Bootstrap-CI tightening reduces but does not eliminate multiple-testing inflation. Deflated Sharpe is reported in the notebook but **not enforced by the keep gate**. A passing run has not passed deflated Sharpe.
-- **Survivorship bias compounds with multiple testing.** SP100/SP500 are frozen 2024 snapshots. Strategies that implicitly bet on "winners keep winning" inherit a free tailwind, and the agent gets ~200 chances to find one.
-- **Universe, costs, and data are all best-case.** yfinance adjusted closes (no microstructure, no failed fills, vendor-specific corporate actions), 5bps flat per side, 200bps borrow, no impact, no bid/ask, no capacity. Strategies that need tighter spreads or bigger size silently look better than they are.
-- **One regime.** 2010–2024 is one bull market with two interruptions (2018Q4, 2020). Walk-forward across 2-year folds helps, but the whole dataset shares a low-rate, high-multiple, US-large-cap-dominant macro backdrop.
-- **Cherry-picked branches.** Each `/autoresearch` invocation makes a fresh branch and pushes it. Running the loop ten times and only keeping the best-looking branch is another selection layer on top of the in-loop selection. Mitigation: read *all* the pushed branches in `analysis.ipynb`, not just the winner.
+Third, the math has a lot of randomness in it. A "win" of 0.05 in OOS Sharpe is probably noise.
 
-### What "passing" actually means
+## What we do to fight self fooling
 
-A `keep` row in `results.tsv` means: this strategy beat the running best on a single fixed OOS window, with a bootstrap-CI lower bound above `running_best - 0.1`, satisfying the hard constraints. **It does not mean the strategy has alpha.** It means it survived one bar in one specific synthetic environment. Honest interpretation of a green row is "worth a closer look in the morning notebook," not "deploy this."
+This is the part that matters.
 
-## Quick start
+1. **Hide the answer from the AI.** We have a mode called strict honesty. When it is on, the AI cannot see the OOS score at all. It only sees how the strategy did on 2010 to 2019. The OOS numbers go to a separate file that only the human reads. This means the AI literally cannot keep tweaking until OOS looks good, because it does not know what OOS looks like.
 
-**Requirements:** Python 3.10+, [uv](https://docs.astral.sh/uv/), internet for the one-time yfinance download.
+2. **Require a real win, not a noise win.** Every run also reports a confidence interval around the OOS score (basically a "the real number is probably somewhere in this range"). To count as an improvement, the bottom of that range has to clear the previous best minus 0.1. A small lucky bump does not pass.
+
+3. **Show the score year by year.** We report OOS Sharpe separately for 2020, 2021, 2022, 2023, and 2024. A strategy that gets a high overall score because it had one amazing year is easy to spot.
+
+4. **Walk forward check.** A separate script (`walkforward.py`) splits the data into five non overlapping two year chunks and runs the strategy on each. If it only works on one chunk, you find out.
+
+5. **Deflated Sharpe.** A notebook (`analysis.ipynb`) runs a statistic called deflated Sharpe. It penalizes the headline score based on how many tries you made. This is the real test for "is this best of 200 actually meaningful." It is not part of the keep rule. You have to look at it yourself in the morning.
+
+6. **Hard rules up front.** Strategies that lose too much or trade too much get thrown out before they can compete. This kills the obvious garbage.
+
+7. **Every attempt is a git commit.** You can see every idea the AI tried, not just the ones it kept. This is your protection against being shown only the survivors.
+
+## Where the self fooling still wins
+
+Read this too.
+
+1. **The OOS slice never changes.** Strict honesty stops the AI. It does not stop you. You read the OOS results between runs, learn what is working, and edit `program.md` based on that. That leaks the OOS into your next run. There is no clean fix short of locking away a slice of data nobody ever looks at.
+
+2. **Strict honesty is on the honor system.** A clever enough AI could in theory guess what is happening on OOS by looking at patterns in what it does see. The only thing stopping it is that it is not trying to.
+
+3. **Deflated Sharpe is shown but not enforced.** A strategy can pass the keep rule and still fail deflated Sharpe. You have to check by hand.
+
+4. **The universe helps momentum strategies.** Only using stocks that survived to 2024 makes "buy the winners" easier. The AI gets 200 chances to find a flavor of it that scores well.
+
+5. **The cost model is friendly.** We charge 5 basis points per side (so 0.05% each time you buy or sell) and 200 basis points a year to short. That is reasonable on average but a real strategy would face worse costs and would be limited in how much money it could trade.
+
+6. **We only test one kind of market.** 2010 to 2024 is mostly one long bull market with two short interruptions. A strategy that works here might fail in a different decade.
+
+7. **You can cherry pick across runs.** Each session makes its own branch. If you run the loop ten times and only keep the prettiest result, you have added another layer of luck. The fix is to look at all the branches in the notebook, not just the best one.
+
+## What "passing" actually means
+
+A green row in `results.tsv` means: this strategy beat the previous best on one fixed slice of data, with a small noise buffer, while obeying the safety rules. That is it. It does not mean the strategy makes money. It means it is worth a closer look in the morning.
+
+## Run it
+
+You need Python 3.10 or later, [uv](https://docs.astral.sh/uv/) (a Python package manager), and an internet connection for the first download.
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv
-uv sync                                            # install deps
-uv run prepare.py                                  # download + cache prices (~1–2 min)
-uv run strategy.py                                 # run the baseline backtest
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync
+uv run prepare.py
+uv run strategy.py
 ```
 
-If those work, your setup is good and you can go into autonomous research mode.
+If those four commands work, you are ready to run the AI.
 
-## Running the agent
+## Running the AI
 
-Spin up Claude Code (or Codex, or whatever) in this repo. The repo ships with a **`quant-autoresearch` skill** (`.claude/skills/quant-autoresearch/SKILL.md`) that wraps `program.md` with timestamped git worktrees, strict-honesty `SHOW_OOS=0` mode, and an auto-push + cleanup on graceful exit. There's also a slash-command wrapper at `.claude/commands/autoresearch.md`.
+Open this repo in Claude Code (or any agent harness you like). The repo ships with a Claude Code skill at `.claude/skills/quant-autoresearch/SKILL.md` that handles the boring parts: makes a fresh git worktree, turns on strict honesty mode, runs the loop, pushes the result branch, and cleans up. There is also a slash command at `.claude/commands/autoresearch.md` that calls the skill.
 
-### Kick-off examples
+### Examples
 
-| Command | What happens |
+| Command | What it does |
 |---|---|
-| `/autoresearch` | Default SP100. Creates `worktrees/<apr19-223742>`, runs baseline + up to 20 trials, pushes branch + `SUMMARY.md` to `origin`, removes the worktree. |
-| `/autoresearch sp500` | Same workflow, on the `sp500_2024` universe (503 tickers). Requires `universe_sp500_2024.json` and the matching prices parquet. |
-| `/autoresearch sp100` | Explicit SP100 (equivalent to bare `/autoresearch`). |
+| `/autoresearch` | Default S&P 100. Makes a worktree, runs the baseline plus up to 20 attempts, pushes a branch with a `SUMMARY.md`, removes the worktree. |
+| `/autoresearch sp500` | Same thing on the S&P 500 (503 tickers). Needs `universe_sp500_2024.json` and the matching prices cache. |
+| `/autoresearch sp100` | Same as plain `/autoresearch`. |
 
-### Natural-language triggers
+### You can also just say it
 
-The skill auto-fires when your prompt matches its description:
+The skill kicks in when your prompt matches its description. Any of these work:
 
 ```
 kick off a new experiment
 start the autoresearch loop
-launch strict-honesty mode on sp500
+launch strict honesty mode on sp500
 run program.md overnight on the sp100 universe
 ```
 
-If you name a universe in the prompt, the skill picks it up and passes `UNIVERSE_TAG=<tag>` through to every harness call.
+If you mention a universe in the prompt, the skill picks it up.
 
-### Parallel runs
+### Running multiple at once
 
-Each kick-off gets its own timestamped worktree, so two `/autoresearch` invocations in separate sessions run concurrently without stepping on each other's `results.tsv` / `oos_results.tsv` / branches. Different universes are also safe: `prepare.py` namespaces the cache by `UNIVERSE_TAG` (`prices_sp100_2024.parquet`, `prices_sp500_2024.parquet`, …). Same-universe parallel runs share the cache read-only.
+Each kick off makes its own timestamped worktree so two sessions do not step on each other. Different universes use separate cache files so they do not fight over data either.
 
 ### Switching universes
 
 ```bash
-UNIVERSE_TAG=sp500_2024 uv run prepare.py     # one-time per universe
-UNIVERSE_TAG=sp500_2024 /autoresearch         # then launch
+UNIVERSE_TAG=sp500_2024 uv run prepare.py
+UNIVERSE_TAG=sp500_2024 /autoresearch
 ```
 
-Add a new universe by dropping `universe_<tag>.json` at the repo root with a list of tickers, then `UNIVERSE_TAG=<tag> uv run prepare.py`.
+To add a new universe, drop `universe_<tag>.json` in the repo root with a list of tickers, then run prepare with that tag.
 
-### What the agent does
+### What the AI does in the loop
 
-`program.md` is the authoritative agent spec; the skill is a thin operational wrapper. Each iteration: edit `strategy.py`, commit, run `SHOW_OOS=0 uv run strategy.py`, log the trial via `log_result.py`, advance or reset based on the grader's exit code. Capped at 20 trials per branch. On graceful exit the worktree is archived via `SUMMARY.md` + `git push`, then removed.
+`program.md` is the actual instruction set. The skill is just a wrapper. Each step: edit `strategy.py`, commit, run the backtest with strict honesty on, log the result, keep or reset. Capped at 20 attempts per branch.
 
-## Project structure
+## File map
 
 ```
-prepare.py                              — constants, data loader, backtest engine (do not modify)
-strategy.py                             — signal + weights (agent modifies this)
-program.md                              — agent instructions
-universe_sp100_2024.json                — frozen SP100 ticker list (default universe)
-universe_sp500_2024.json                — frozen SP500 ticker list (503 tickers)
-analysis.ipynb                          — notebook for reviewing results.tsv (deflated Sharpe lives here)
-running_best.py                         — CLI: current best kept oos_sharpe
-log_result.py                           — CLI: append a row to results.tsv from run.log
-walkforward.py                          — CLI: per-fold Sharpe sanity check for a strategy
-test_lookahead.py                       — regression test for the T+1 shift
-pyproject.toml                          — dependencies
-.claude/skills/quant-autoresearch/      — Claude Code skill wrapping program.md
-.claude/commands/autoresearch.md        — slash-command alias for the skill
-worktrees/                              — per-experiment git worktrees (gitignored)
+prepare.py                              constants, data loader, backtest engine (do not modify)
+strategy.py                             the trading idea (the AI edits this)
+program.md                              instructions for the AI
+universe_sp100_2024.json                frozen S&P 100 ticker list (default)
+universe_sp500_2024.json                frozen S&P 500 ticker list (503 tickers)
+analysis.ipynb                          notebook for review, deflated Sharpe lives here
+running_best.py                         CLI: shows the current best kept score
+log_result.py                           CLI: writes a row to results.tsv from run.log
+walkforward.py                          CLI: per fold sanity check for a strategy
+test_lookahead.py                       regression test for the T+1 shift
+pyproject.toml                          dependencies
+.claude/skills/quant-autoresearch/      Claude Code skill wrapping program.md
+.claude/commands/autoresearch.md        slash command alias for the skill
+worktrees/                              per experiment git worktrees (gitignored)
 ```
 
-## Other limitations
+## Other things that are not realistic
 
-Beyond the multiple-testing problem above:
+Beyond the multiple testing problem above:
 
-- **Survivorship bias.** The universe is a frozen 2024-dated SP100 snapshot. Any ticker delisted or renamed before 2024-12-31 is silently absent. `run_backtest` does force weights to 0 on tickers without price data yet (mitigating IPO-era leakage for META, ABBV, TSLA, etc.), but a proper point-in-time membership schedule is not yet supplied. Results are biased upward relative to a real PIT backtest, often substantially.
-- **Data fidelity.** yfinance, free, unaudited, adjusted closes. Corporate actions, dividends, splits all follow yfinance conventions. Gaps and errors are not corrected. Don't assume parity with a paid vendor.
-- **Cost model is crude.** 5bps per side + 200bps annual borrow on shorts. No market-impact, no bid/ask, no capacity, no financing curve, no shorting locate cost beyond the flat 200bps.
-- **No deployment.** No broker, no paper trading, no live signal. A good `oos_sharpe` here is a hypothesis that survived one synthetic backtest, not a trade-ready signal.
-- **The agent is not a quant.** It pattern-matches against textbook signals and combinations. It does not understand microstructure, institutional plumbing, or why a published anomaly might already be arbitraged away. Treat its "discoveries" as starting points for human investigation, not as conclusions.
+1. The price data comes from yfinance, which is free and unaudited. Splits, dividends, and corporate actions follow yfinance conventions. Bugs in the data are not corrected.
 
-If you want to use any idea that comes out of this loop for real money, you owe it: a proper point-in-time universe, a real cost/impact/capacity study, an out-of-sample window the loop has *never* touched, and a paper-trading sandbox before any capital. This repo does none of those things and is not a substitute for any of them.
+2. The cost model is a flat 5 basis points per side and 200 basis points a year to short. There is no model for how much you move the market when you trade big, no bid ask spread, and no limit on how big the strategy can get before it stops working.
+
+3. There is no broker connection, no paper trading, no live signal. A good score here is a hypothesis, not a trade.
+
+4. The AI is not a quant. It pattern matches against ideas it has seen in textbooks. It does not know about microstructure, settlement, locate fees, or why a published anomaly might already be arbitraged away.
+
+If you want to use any idea from this loop with real money, you owe it: a proper point in time universe (so you are not cheating with hindsight), a real cost study, an out of sample slice this loop has never touched, and a paper trading sandbox before any actual capital. None of that is here.
 
 ## Credit
 
-This repo is a fork-of-pattern (not a fork-of-code) of Andrej Karpathy's [`karpathy/autoresearch`](https://github.com/karpathy/autoresearch). The loop structure, the single-file-edit constraint, the agent-as-experimenter framing, and the git-native audit trail are all his ideas. Everything that's specifically about defending against multiple-testing leakage in a noisy financial objective — strict-honesty mode, bootstrap CI gates, per-year decomposition, walk-forward, deflated Sharpe in review, and the candid leakage list above — is what this fork adds on top.
+This is a port of the loop from Andrej Karpathy's [karpathy/autoresearch](https://github.com/karpathy/autoresearch). The structure (one file, hard rules, git audit trail, AI in the driver seat) is his idea. Everything specifically about not fooling yourself in a noisy financial setting (strict honesty mode, bootstrap intervals, year by year breakdown, walk forward, deflated Sharpe in review, the honest list of remaining problems) is what this fork adds.
 
 ## License
 
