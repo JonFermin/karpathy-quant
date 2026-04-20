@@ -1,0 +1,23 @@
+{
+  "tag": "xbi_2026",
+  "as_of": "2026-04-17",
+  "source": "SPDR S&P Biotech ETF (XBI) daily holdings xlsx, ssga.com snapshot fetched 2026-04-19",
+  "survivorship_warning": "This list is a point-in-time snapshot of the SPDR S&P Biotech ETF (XBI) holdings as of the snapshot date. Biotech is a brutally selection-biased industry: the vast majority of small/mid-cap biotechs that existed in 2010 are now delisted (failed trials, bankruptcy, buyouts), and a frozen 2026 holdings list contains only the survivors. This is the highest survivorship-bias universe in the repo by a wide margin. The flip side is that biotech is also the most idiosyncratic equity sector - pricing is driven by binary trial outcomes and FDA decisions, which are nearly orthogonal to broad-market factors. A strategy that wins here without loading on momentum/beta is more likely to be a real single-name edge. Documented, not fixed.",
+  "tickers": [
+    "ABBV", "ABSI", "ABUS", "ACAD", "ACLX", "ADMA", "AGIO", "AKBA", "ALKS", "ALLO",
+    "ALNY", "ALT", "AMGN", "ANAB", "ANNX", "APGE", "APLS", "ARDX", "ARQT", "ARWR",
+    "AVBP", "AVXL", "BBIO", "BCAX", "BCRX", "BEAM", "BHVN", "BIIB", "BMRN", "CAPR",
+    "CATX", "CDNA", "CELC", "CGEM", "CGON", "CLDX", "CMPX", "COGT", "CPRX", "CRSP",
+    "CRVS", "CTMX", "CYTK", "DAWN", "DMRA", "DNLI", "DNTH", "DYN", "EBS", "ERAS",
+    "EXEL", "FDMT", "FOLD", "GERN", "GILD", "GLUE", "GRAL", "HALO", "IBRX", "IDYA",
+    "IMNM", "IMVT", "INBX", "INCY", "INSM", "IONS", "IOVA", "IRON", "IRWD", "IVVD",
+    "JANX", "KALV", "KOD", "KRYS", "KURA", "KYMR", "LXEO", "MDGL", "MDXG", "MIRM",
+    "MLYS", "MNKD", "MRNA", "MYGN", "NBIX", "NRIX", "NTLA", "NTRA", "NUVL", "NVAX",
+    "OCGN", "OLMA", "ORIC", "ORKA", "PCVX", "PGEN", "PRAX", "PRME", "PRTA", "PTCT",
+    "PTGX", "PURR", "PVLA", "QURE", "RARE", "RCKT", "RCUS", "REGN", "REPL", "RGNX",
+    "RIGL", "RLAY", "ROIV", "RVMD", "RXRX", "RYTM", "SANA", "SION", "SLNO", "SLS",
+    "SMMT", "SNDX", "SPRY", "SRPT", "SRRK", "STOK", "SVRA", "SYRE", "TGTX", "TNGX",
+    "TRAXV", "TSHA", "TVTX", "TWST", "TYRA", "UTHR", "VCEL", "VCYT", "VERA", "VIR",
+    "VKTX", "VNDA", "VOR", "VRDN", "VRTX", "VSTM", "XNCR", "ZBIO"
+  ]
+}

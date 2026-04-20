@@ -145,6 +145,21 @@ UNIVERSE_TAG=sp500_2024 /autoresearch
 
 To add a new universe, drop `universe_<tag>.json` in the repo root with a list of tickers, then run prepare with that tag.
 
+### Available universes (and where alpha could hide)
+
+The default S&P 100 is the most efficient universe in the repo. A hundred giant US companies are watched by every analyst on earth, so any signal there has been competed away long ago. Less efficient universes have more room for a real edge to survive, but they also have worse survivorship bias. Pick your poison.
+
+| Tag | Names | What it is | Where it cuts |
+|---|---|---|---|
+| `sp100_2024` (default) | 100 | S&P 100, biggest US large caps | Most efficient. Hardest to beat. Survivorship bias is real but moderate. |
+| `sp500_2024` | 503 | S&P 500 | A bit less efficient than SP100. Good for sanity checking that an SP100 result is not single-name luck. |
+| `sp400_2024` | 400 | S&P MidCap 400 | Mid caps. Less analyst coverage. Survivorship bias is bigger because mid caps churn more. |
+| `sp600_2024` | 603 | S&P SmallCap 600 | Small caps. Least efficient cap-based universe in the repo. Also the most survivorship-biased of the SP family because small caps fail more often. |
+| `ndx100_2024` | 101 | Nasdaq 100 | Tech and growth concentrated. A win here might just be loading on tech beta in a 14-year tech bull market. |
+| `xbi_2026` | 148 | SPDR S&P Biotech ETF holdings | Single sector. Returns are driven by binary trial outcomes and FDA decisions, which barely correlate with broad market factors. Worst survivorship bias in the repo by a wide margin (most pre-2010 small biotechs are gone). The flip side: a strategy that wins here without loading on momentum is more likely to be a real single name edge. |
+
+Rule of thumb: if a strategy looks great on `sp100_2024` only, you are probably overfitting. If it looks great on `sp600_2024` and `xbi_2026` too, the deflated Sharpe is still the test that matters, but at least you are not just riding mega cap beta.
+
 ### What the AI does in the loop
 
 `program.md` is the actual instruction set. The skill is just a wrapper. Each step: edit `strategy.py`, commit, run the backtest with strict honesty on, log the result, keep or reset. Capped at 20 attempts per branch.
@@ -157,6 +172,10 @@ strategy.py                             the trading idea (the AI edits this)
 program.md                              instructions for the AI
 universe_sp100_2024.json                frozen S&P 100 ticker list (default)
 universe_sp500_2024.json                frozen S&P 500 ticker list (503 tickers)
+universe_sp400_2024.json                frozen S&P MidCap 400 ticker list (400 tickers)
+universe_sp600_2024.json                frozen S&P SmallCap 600 ticker list (603 tickers)
+universe_ndx100_2024.json               frozen Nasdaq 100 ticker list (101 tickers)
+universe_xbi_2026.json                  XBI biotech ETF holdings (148 tickers, sector universe)
 analysis.ipynb                          notebook for review, deflated Sharpe lives here
 running_best.py                         CLI: shows the current best kept score
 log_result.py                           CLI: writes a row to results.tsv from run.log

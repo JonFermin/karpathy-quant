@@ -1,0 +1,19 @@
+{
+  "tag": "ndx100_2024",
+  "as_of": "2026-04-19",
+  "source": "Nasdaq-100 constituents, Wikipedia snapshot fetched 2026-04-19",
+  "survivorship_warning": "This list is a point-in-time snapshot with no historical membership corrections. Any ticker that was delisted, renamed, or added after the snapshot date is treated as if it had its current status for the full 2010-2024 window. This biases backtests favorably (survivors outperform droppers). The NDX100 is also tech/growth-concentrated by construction — a strategy that wins here may just be loading on tech beta. Documented, not fixed.",
+  "tickers": [
+    "AAPL", "ABNB", "ADBE", "ADI", "ADP", "ADSK", "AEP", "ALNY", "AMAT", "AMD",
+    "AMGN", "AMZN", "APP", "ARM", "ASML", "AVGO", "AXON", "BKNG", "BKR", "CCEP",
+    "CDNS", "CEG", "CHTR", "CMCSA", "COST", "CPRT", "CRWD", "CSCO", "CSGP", "CSX",
+    "CTAS", "CTSH", "DASH", "DDOG", "DXCM", "EA", "EXC", "FANG", "FAST", "FER",
+    "FTNT", "GEHC", "GILD", "GOOG", "GOOGL", "HON", "IDXX", "INSM", "INTC", "INTU",
+    "ISRG", "KDP", "KHC", "KLAC", "LIN", "LRCX", "MAR", "MCHP", "MDLZ", "MELI",
+    "META", "MNST", "MPWR", "MRVL", "MSFT", "MSTR", "MU", "NFLX", "NVDA", "NXPI",
+    "ODFL", "ORLY", "PANW", "PAYX", "PCAR", "PDD", "PEP", "PLTR", "PYPL", "QCOM",
+    "REGN", "ROP", "ROST", "SBUX", "SHOP", "SNPS", "STX", "TEAM", "TMUS", "TRI",
+    "TSLA", "TTWO", "TXN", "VRSK", "VRTX", "WBD", "WDAY", "WDC", "WMT", "XEL",
+    "ZS"
+  ]
+}
