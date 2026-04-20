@@ -153,6 +153,8 @@ Do NOT run `cat oos_results.tsv` during the loop. Do NOT `grep oos_sharpe_2` or 
 
 ## Hypothesis discipline
 
+- **Review prior theses before forming a new one.** Before editing `strategy.py`, run `awk -F'\t' 'NR>1 {print $1, $6}' results.tsv` (safe under SHOW_OOS=0 — commit + description only). Scan for what you've already tried. Because each discard resets to baseline, nothing stops you from re-exploring the same tiny region of idea-space twenty times; this review is the only thing that does.
+- **Name the axis in the thesis line.** Every `thesis:` must declare which dimension of the design it moves along — signal family (trend / reversal / vol / quality / regime / composite), horizon (days / weeks / months / years), sizing (equal / inverse-vol / rank-tilted), rebalance cadence, or universe/leverage. Format: `thesis: [axis] <rationale>`, e.g. `thesis: [reversal/21d/equal/monthly] one-month losers revert via flow pressure`. Near-duplicates become visible at a glance; every new thesis should move on an axis that prior trials haven't saturated.
 - Frame the thesis **before** editing. Write it as the `thesis:` line first; if you can't, skip the idea.
 - Prefer changes with economic intuition (why a market would pay for this edge) over parameter sweeps.
 - A 5-line change with a thesis beats a 10-hyperparam grid search. Simpler is better. Deleting code that works equally well is a win.
