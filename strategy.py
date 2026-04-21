@@ -34,9 +34,9 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # Thesis: biotech event-driven selloffs overshoot; 1-month losers revert.
     ret_21d = prices.pct_change(21)
 
-    # Bottom decile (buy losers), equal-weighted.
+    # Bottom quintile (broader basket → lower turnover, smoother returns).
     ranks = ret_21d.rank(axis=1, pct=True)
-    w = (ranks <= 0.1).astype(float)
+    w = (ranks <= 0.2).astype(float)
 
     # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
     row_sum = w.sum(axis=1).replace(0, 1)
