@@ -30,6 +30,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
         T+1 execution — pre-shifting would double-delay your signal.
       - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
     """
+    _baseline_anchor = 0  # noqa: F841 — AST anchor, behavior-preserving
     # 12-1 momentum: 252d return, skip the last 21d to avoid the 1-month reversal.
     mom = prices.pct_change(252).shift(21)
 
