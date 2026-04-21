@@ -79,7 +79,7 @@ Required prompt content per subagent (adapt fields in angle brackets):
 - `SHOW_OOS=0` reminder.
 - Baseline iteration must be a behavior-preserving algebraic rewrite (e.g. `(ranks >= 0.9)` → `(ranks >= 1 - 0.1)`).
 - Full "Archive + push + cleanup" on graceful stop.
-- Tolerance for Windows `git worktree remove` failure: "Filename too long" / "Invalid argument" means MAX_PATH hit. The branch is safely on origin — leave the worktree and do not panic.
+- Windows cleanup note: the skill's Archive block falls back from `git worktree remove` (which routinely errors "Filename too long" / "Invalid argument" on MAX_PATH) to an unconditional `rm -rf worktrees/$TAG` once `origin/$BRANCH` is confirmed. Do NOT skip or short-circuit that fallback — leaving the directory stranded is no longer acceptable.
 - Explicit isolation rule: do not reach into sibling worktrees; the other N-1 runs are concurrent.
 - Ask for a brief end-of-run summary (branch, keep/trial counts, baseline oos_sharpe, running_best oos_sharpe, push status).
 
@@ -102,11 +102,14 @@ When all N are done, emit a single cross-universe summary table to the human:
 
 Call out any universe where running_best > baseline (a trial cleared the hurdle — the interesting case). The typical outcome across all universes is 1 keep (baseline anchor) / 19 discards — this is the honest null result, not a failure.
 
-## Step 5 — Worktree cleanup note (Windows)
+## Step 5 — Worktree cleanup (handled by each subagent)
 
-On Windows, `git worktree remove` often fails with MAX_PATH errors on the `.git/` subtree inside the worktree. If this happens across multiple sister runs, you'll have 5 leftover worktree directories under `worktrees/`. The branches are safely on origin either way — cleanup is optional and the user can do it manually later with `rm -rf worktrees/<tag>` from git-bash (which handles long paths better than the git CLI on Windows).
+Each subagent runs the `quant-autoresearch` skill's **Archive + push + cleanup** block, which unconditionally `rm -rf`s its worktree directory once `origin/<branch>` is confirmed — `git worktree remove` is attempted first for metadata hygiene, but the forced filesystem removal is the real cleanup step (Windows' MAX_PATH routinely breaks the `git` variant). You should therefore expect `worktrees/` to be empty after all subagents report success.
 
-Do NOT `git worktree prune` aggressively — if any push failed, the worktree is the only local copy of the work.
+If, after all subagents complete, any `worktrees/<tag>/` directory still exists:
+
+- The only safe reason is that subagent's push to origin failed — meaning the worktree is the last copy of the work. Tell the human; do NOT `rm -rf` it yourself, and do NOT `git worktree prune` aggressively (that would desync the registry from the stranded work).
+- Confirm with `git ls-remote --heads origin quant-research/<tag>` before considering any further action.
 
 ## Common pitfalls
 
