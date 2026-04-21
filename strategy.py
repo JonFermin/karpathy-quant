@@ -36,7 +36,13 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
 
     # Bottom quintile (broader basket → lower turnover, smoother returns).
     ranks = ret_21d.rank(axis=1, pct=True)
-    w = (ranks <= 0.2).astype(float)
+    mask = (ranks <= 0.2).astype(float)
+
+    # Inverse-vol sizing within the basket — downweight names with ongoing
+    # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
+    vol_63d = prices.pct_change().rolling(63).std()
+    inv_vol = (1.0 / vol_63d).replace([float("inf")], 0).fillna(0)
+    w = mask * inv_vol
 
     # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
     row_sum = w.sum(axis=1).replace(0, 1)
