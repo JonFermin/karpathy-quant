@@ -243,7 +243,35 @@ cd ../..    # back to repo root
 # branch (e.g. 0419-2237 vs 0419-223742) and nuke the wrong worktree.
 if git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH" >/dev/null; then
   git worktree remove "worktrees/$TAG"
-  echo "archived and cleaned up: $BRANCH pushed to origin"
+
+  # 5. Branch on outcome:
+  #    - real improvement kept (non-seed keep) → open a PR so the human reviews
+  #      the candidate strategy (walk-forward + deflated Sharpe) before merge.
+  #    - seed-only (no trial beat the hurdle) → delete the local branch ref.
+  #      The branch stays on origin as an audit trail but doesn't clutter
+  #      `git branch` locally. N_KEEP counts the seed, so N_KEEP > 1 is the test.
+  if [ "$N_KEEP" -gt 1 ]; then
+    if command -v gh >/dev/null 2>&1; then
+      PR_BODY="Autoresearch run on \`$UNIV\` kept $((N_KEEP - 1)) non-seed improvement(s) across $N_TRIAL trials.
+
+- Baseline: $BASELINE_LINE
+- Running best: $RUNNING_LINE
+- Full audit: \`summaries/$TAG.md\` on this branch
+
+**Do NOT merge without review.** Before accepting: \`git checkout $BRANCH && uv run walkforward.py\`, then open \`analysis.ipynb\` to check deflated Sharpe. A green run here is a hypothesis, not a verdict — see README \"Where the self fooling still wins\"."
+      gh pr create --base master --head "$BRANCH" \
+        --title "autoresearch: $BRANCH ($((N_KEEP - 1)) improvements / $N_TRIAL trials)" \
+        --body "$PR_BODY" \
+        || echo "gh pr create failed — branch is on origin, open the PR manually"
+    else
+      echo "gh CLI not installed — $BRANCH is pushed; open PR manually at origin"
+    fi
+    echo "archived with PR: $BRANCH (real improvement, local branch kept for review)"
+  else
+    git branch -D "$BRANCH" 2>/dev/null \
+      || echo "local branch $BRANCH not found (already cleaned or never checked out here)"
+    echo "archived seed-only: $BRANCH pushed to origin, local branch removed"
+  fi
 else
   echo "worktree preserved at worktrees/$TAG — manual cleanup required"
 fi
@@ -252,8 +280,10 @@ fi
 Rules:
 - Never `--force` on push. If origin rejects (somehow the branch exists upstream), STOP and report — do not overwrite.
 - Never `git worktree remove --force` if the remote is missing the commits; that loses work.
-- Do NOT delete the branch locally (`git branch -D`). The worktree removal already detaches it; the branch stays referenceable. Deleting branches is the human's choice.
+- Delete the local branch (`git branch -D "$BRANCH"`) **only** on seed-only runs — the origin copy is the audit trail, the local copy is dead weight. On real-keep runs the local branch stays so the human can `git checkout` it without refetching.
+- Never force-push, never delete a branch on origin. Seed-only branches stay on origin as an audit trail of what didn't work.
 - If there is no `origin` remote configured, skip push and preserve the worktree. Tell the human. Do NOT try to add a remote.
+- If `gh` CLI isn't available, skip PR creation and say so. Do NOT try to install it.
 
 ## Morning-review hint for the human (do NOT act on this during the loop)
 
