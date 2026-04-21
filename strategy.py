@@ -37,9 +37,9 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     ranks = mom.rank(axis=1, pct=True)
     w = (ranks >= 1 - 0.1).astype(float)
 
-    # Per-row normalize to gross 1.0 (0 if no names qualify).
+    # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
     row_sum = w.sum(axis=1).replace(0, 1)
-    w = w.div(row_sum, axis=0)
+    w = w.div(row_sum, axis=0) * 0.5
 
     # Month-end rebalance; hold through the month.
     w = w.resample("ME").last().reindex(prices.index, method="ffill").fillna(0.0)
