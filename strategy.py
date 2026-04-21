@@ -37,9 +37,9 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     r63 = prices.pct_change(63).rank(axis=1, pct=True)
     combined = (r21 + r63) / 2
 
-    # Bottom quintile of the composite rank.
+    # Bottom decile of the composite rank — tighter basket, stronger signal.
     ranks = combined.rank(axis=1, pct=True)
-    mask = (ranks <= 0.2).astype(float)
+    mask = (ranks <= 0.1).astype(float)
 
     # Inverse-vol sizing within the basket — downweight names with ongoing
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
