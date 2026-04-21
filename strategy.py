@@ -31,7 +31,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
       - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
     """
     # 12-1 momentum: 252d return, skip the last 21d to avoid the 1-month reversal.
-    mom = prices.pct_change(252).shift(21)
+    mom = prices.pct_change(252).shift(21 + 0)
 
     # Top decile, equal-weighted.
     ranks = mom.rank(axis=1, pct=True)
