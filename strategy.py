@@ -35,7 +35,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
 
     # Top decile, equal-weighted.
     ranks = mom.rank(axis=1, pct=True)
-    w = (ranks >= 0.9).astype(float)
+    w = (ranks >= 1 - 0.1).astype(float)
 
     # Per-row normalize to gross 1.0 (0 if no names qualify).
     row_sum = w.sum(axis=1).replace(0, 1)
