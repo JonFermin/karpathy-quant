@@ -1,0 +1,15 @@
+{
+  "tag": "xlk_2026",
+  "as_of": "2026-04-25",
+  "source": "Technology Select Sector SPDR Fund (XLK) — top holdings cross-referenced with S&P 500 IT sector membership. Composed from stockanalysis.com top-25 (NVDA, AAPL, MSFT, AVGO, MU, AMD, CSCO, PLTR, LRCX, AMAT, INTC, ORCL, TXN, KLAC, IBM, ADI, APH, ANET, CRM, QCOM, PANW, SNDK, WDC, GLW, STX) plus confident long-tenured XLK constituents — not a full daily holdings replica but a representative concentrated-mega-tech basket for autoresearch.",
+  "survivorship_warning": "Frozen 2026 snapshot of XLK-style large-cap US tech holdings. Survivorship bias is meaningful but lower than XBI: SP500 IT sector adds/drops are slow, and the dominant names (Apple, Microsoft, Nvidia, Broadcom) have been mega-cap for the entire 2010-2024 IS+OOS span. Two distortions to flag: (1) the universe is heavily skewed by the post-2017 GICS reclassification that moved Facebook/Alphabet/etc. into Communication Services — those names are NOT here despite being 'tech' in spirit; (2) names like PLTR, SMCI, ARM IPO'd late, so their pre-2020 history is missing from the parquet. The universe leans into the FAANG+ trend persistence story; trend-following / momentum results here should be read as 'this works on the slice of US tech that survived as mega-cap', not 'this works on tech broadly'.",
+  "tickers": [
+    "AAPL", "ACN", "ADBE", "ADI", "ADP", "ADSK", "AKAM", "AMAT", "AMD", "ANET",
+    "ANSS", "APH", "AVGO", "CDNS", "CDW", "CRM", "CSCO", "CTSH", "ENPH", "EPAM",
+    "FFIV", "FICO", "FSLR", "FTNT", "GEN", "GLW", "HPE", "HPQ", "IBM", "INTC",
+    "INTU", "JBL", "JNPR", "KEYS", "KLAC", "LRCX", "MCHP", "MPWR", "MSFT", "MSI",
+    "MU", "NOW", "NTAP", "NVDA", "NXPI", "ON", "ORCL", "PANW", "PAYC", "PAYX",
+    "PLTR", "PTC", "QCOM", "ROP", "SMCI", "SNPS", "STX", "SWKS", "TDY", "TEL",
+    "TER", "TRMB", "TXN", "TYL", "VRSN", "WDC", "ZBRA"
+  ]
+}

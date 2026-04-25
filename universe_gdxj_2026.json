@@ -1,0 +1,13 @@
+{
+  "tag": "gdxj_2026",
+  "as_of": "2026-04-25",
+  "source": "VanEck Junior Gold Miners ETF (GDXJ) holdings — restricted to US-primary-listed precious metals miners and royalty companies that yfinance can fetch reliably for the 2010-2024 backtest window. The published GDXJ basket includes many TSX/ASX-primary names which are excluded here to avoid yfinance suffix-resolution flakiness.",
+  "survivorship_warning": "Frozen 2026 snapshot of US-listed junior/mid-tier precious metals miners. Survivorship bias is high — second only to XBI in this repo. Junior mining is brutally selection-biased: most pre-2010 explorers and developers either failed (no deposit, ran out of capital, hit a permitting wall), got acquired, or merged. Names like Pretium, SilverCrest, Yamana, Goldcorp are missing because they're gone. The flip side: gold/silver miners are highly idiosyncratic relative to broad equity factors — pricing is dominated by gold-price beta, drilling-result events, permitting decisions, and capital-raise overhangs. Like biotech, this is a flow-pressure-rich, retail-heavy basket with frequent forced selling on bad news; reversal-style edges are mechanistically plausible. Also note: a subset are royalty/streaming companies (FNV, RGLD, WPM, SAND, OR, EMX, GROY) whose business model is fundamentally different from mining — they trade on a hybrid royalty+miner factor, lower vol than operators, and their inclusion is faithful to GDXJ but blurs the 'junior miner' label. Documented, not fixed.",
+  "tickers": [
+    "AG", "AGI", "ARMN", "AU", "AUMN", "BTG", "BVN", "CDE", "CGAU", "CMCL",
+    "DRD", "EGO", "EMX", "EQX", "EXK", "FNV", "FSM", "GAU", "GFI", "GORO",
+    "GROY", "HL", "HMY", "IAG", "IAUX", "ITRG", "KGC", "MAG", "MUX", "NGD",
+    "OR", "PAAS", "RGLD", "SAND", "SBSW", "SSRM", "SVM", "TGB", "THM", "USAU",
+    "VZLA", "WPM"
+  ]
+}
