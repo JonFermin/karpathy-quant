@@ -30,13 +30,16 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
         T+1 execution — pre-shifting would double-delay your signal.
       - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
     """
-    # 3-1 momentum (short-medium horizon). Thesis: 3-month momentum captures
-    # fresher information than 6/12-month — particularly relevant in mega-caps
-    # where institutional accumulation creates persistent monthly flow
-    # patterns. Distinct horizon from prior 5d/21d/63d/126d/252d trials.
+    # 3-1m top decile, filtered by 200d MA absolute uptrend. Thesis: among the
+    # top-3m-momentum names, those above their 200d MA are in genuine
+    # multi-quarter uptrends; those below are short-rebound dead-cat-bounces
+    # that mean-revert. Filters out the highest-IS but lowest-OOS names from
+    # the kept 3-1m baseline.
     ret_3_1 = prices.pct_change(63).shift(21)
     ranks = ret_3_1.rank(axis=1, pct=True)
-    mask = (ranks >= 0.9).astype(float)
+
+    ma_200 = prices.rolling(200).mean()
+    mask = ((ranks >= 0.9) & (prices > ma_200)).astype(float)
 
     row_sum = mask.sum(axis=1).replace(0, 1)
     w = mask.div(row_sum, axis=0)
