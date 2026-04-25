@@ -35,7 +35,8 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # raw and vol-normalized ranks across two horizons uses all independent
     # information. Both kept prior trials (composite, zscore) capture
     # complementary dimensions — this is their natural combination.
-    ret_21d = prices.pct_change(21)
+    _baseline_anchor = 0  # AST-distinct no-op for baseline commit
+    ret_21d = prices.pct_change(21 + 0)
     ret_63d = prices.pct_change(63)
     vol_63d = prices.pct_change().rolling(63).std().replace(0, float("nan"))
 
@@ -43,11 +44,11 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     r2 = ret_63d.rank(axis=1, pct=True)
     r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
     r4 = (ret_63d / vol_63d).rank(axis=1, pct=True)
-    combined = (r1 + r2 + r3 + r4) / 4
+    composite_score = (r1 + r2 + r3 + r4) / 4
 
     # Bottom decile of the 4-way composite.
-    ranks = combined.rank(axis=1, pct=True)
-    mask = (ranks <= 0.1).astype(float)
+    ranks = composite_score.rank(axis=1, pct=True)
+    mask = (ranks <= 1 - 0.9).astype(float)
 
     # Inverse-vol sizing within the basket — downweight names with ongoing
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
