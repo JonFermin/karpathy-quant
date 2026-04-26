@@ -25,6 +25,23 @@ Each experiment runs a vectorized daily-equity backtest, wrapped in a **5-minute
 **What you CAN do:**
 - Modify `strategy.py` — this is the only file you edit. Everything inside `generate_weights` is fair game: new signals, sizing, regime filters, rebalancing cadence, neutralization, etc.
 
+**Available data** (loaders in `prepare.py`):
+
+| Loader | Returns | Use case |
+|---|---|---|
+| `load_prices()` | adjusted close (date × ticker) | the canonical price frame; `run_backtest` already sees this |
+| `load_open()` / `load_high()` / `load_low()` | adjusted OHL (date × ticker) | intraday range, gap analysis, OHLC-based realized vol (Garman-Klass) |
+| `load_volume()` | split-adjusted share volume (date × ticker) | raw turnover signal — but for sizing prefer dollar volume |
+| `load_dollar_volume()` | close × volume (date × ticker) | the canonical liquidity proxy; ADV-based gross caps, illiquid-name screens, liquidity-weighted sizing |
+| `load_panel()` | dict of all six frames above | when you need multiple fields together |
+| `load_market_proxy()` | SPY adjusted close (date,) | regime gates (drawdown from peak, 200d MA), beta-neutralization, excess-return residualization |
+
+All frames share the same date index as `prices`. Common derived features:
+- Overnight return = `load_open() / load_prices().shift(1) - 1` (news-driven gaps; large for biotech)
+- Intraday return = `load_prices() / load_open() - 1` (vs overnight — they have different statistical properties)
+- Daily range = `(load_high() - load_low()) / load_prices()` (more efficient daily vol estimator than close-to-close)
+- Beta to market = rolling cov(asset_ret, market_ret) / var(market_ret) using `load_market_proxy()`
+
 **What you CANNOT do:**
 - Modify `prepare.py`. It is read-only. It contains the fixed evaluation, price loading, date slicing, cost model, hard constraints, and — crucially — the T+1 shift inside `run_backtest`. Do NOT pre-shift weights in your strategy; `run_backtest` does it for you, and double-shifting silently cripples your signal.
 - Install new packages or add dependencies. You can only use what's already in `pyproject.toml`.
@@ -173,6 +190,10 @@ You are a completely autonomous researcher. The grader is strict on purpose: it 
 - **Regime filter**: gate the whole book off when VIX level or SPY drawdown exceeds a threshold. (Note: if you don't have VIX in the cache, use a market-proxy drawdown from SPY if it's in the universe, or from the equal-weighted universe return.)
 - **Combination**: weighted average of two previously-kept signals with a clear thesis for why they're complementary.
 - **Sizing**: long-only vs long-short; gross-leverage limits; per-name weight caps.
+- **Liquidity conditioning** (uses `load_dollar_volume()`): screen out the bottom-quartile of 21d-avg dollar volume before signal selection (illiquid names dominate naive cross-sections); or weight by sqrt(ADV) so capacity-constrained names get less risk.
+- **Overnight vs intraday split** (uses `load_open()`): the equity premium is famously concentrated overnight — a long signal from `open_t / close_{t-1} - 1` and a short signal from `close_t / open_t - 1` may have very different statistical properties. Test the two horizons separately before combining.
+- **OHLC-based realized vol** (uses `load_high()`, `load_low()`): Garman-Klass `0.5*ln(H/L)^2 - (2*ln(2) - 1)*ln(C/O)^2` is a 5-7× more efficient daily vol estimator than close-to-close — useful as a denominator for risk-adjusted momentum or as a regime-gate input.
+- **Beta neutralization** (uses `load_market_proxy()`): regress per-name returns on SPY returns over a rolling window; trade the residuals (idiosyncratic component) instead of total returns. Removes a chunk of common-factor noise without needing a full risk model.
 
 Frame each idea with a one-line thesis *before* you run. If the thesis is "I have no idea, just trying stuff," reconsider.
 

@@ -137,6 +137,15 @@ EMBARGO_DAYS = 21
 REPO_ROOT = Path(__file__).resolve().parent
 CACHE_DIR = Path.home() / ".cache" / "karpathy-quant-auto-research"
 PRICES_PARQUET = CACHE_DIR / f"prices_{UNIVERSE_TAG}.parquet"
+OPEN_PARQUET = CACHE_DIR / f"open_{UNIVERSE_TAG}.parquet"
+HIGH_PARQUET = CACHE_DIR / f"high_{UNIVERSE_TAG}.parquet"
+LOW_PARQUET = CACHE_DIR / f"low_{UNIVERSE_TAG}.parquet"
+VOLUME_PARQUET = CACHE_DIR / f"volume_{UNIVERSE_TAG}.parquet"
+# Broad-market reference (SPY adjusted close). Universe-agnostic — the
+# agent uses it for regime gates, beta-neutralization, and excess-return
+# residualization. Cached once and shared across universes.
+MARKET_PROXY_TICKER = os.environ.get("MARKET_PROXY_TICKER", "SPY").strip().upper() or "SPY"
+MARKET_PROXY_PARQUET = CACHE_DIR / f"market_proxy_{MARKET_PROXY_TICKER}.parquet"
 UNIVERSE_JSON = REPO_ROOT / f"universe_{UNIVERSE_TAG}.json"
 # Optional PIT membership schedule. Schema:
 #   {"removals": [{"ticker": "XXX", "date": "YYYY-MM-DD"}, ...],
@@ -293,8 +302,24 @@ def membership_mask(prices: pd.DataFrame) -> pd.DataFrame:
 # Price download + cache
 # ---------------------------------------------------------------------------
 
+_OHLCV_FIELDS = ("Open", "High", "Low", "Close", "Volume")
+_FIELD_TO_PARQUET = {
+    "open": OPEN_PARQUET,
+    "high": HIGH_PARQUET,
+    "low": LOW_PARQUET,
+    "close": PRICES_PARQUET,
+    "volume": VOLUME_PARQUET,
+}
+
+
 def _download_batch(tickers: list[str], threads: bool):
-    """Single yfinance call; returns dict of ticker -> Close series."""
+    """Single yfinance call; returns dict[field, dict[ticker, Series]] over OHLCV.
+
+    `auto_adjust=True` back-adjusts Open/High/Low/Close for splits and
+    dividends, and split-adjusts Volume. So a stock that did a 2-for-1
+    in 2018 will not show a synthetic price gap or volume pop on the
+    split date — what the agent sees is a clean continuous series.
+    """
     import yfinance as yf
 
     raw = yf.download(
@@ -307,48 +332,56 @@ def _download_batch(tickers: list[str], threads: bool):
         threads=threads,
         group_by="ticker",
     )
-    closes: dict[str, pd.Series] = {}
+    out: dict[str, dict[str, pd.Series]] = {f: {} for f in _OHLCV_FIELDS}
     if isinstance(raw.columns, pd.MultiIndex):
         for t in tickers:
-            if (t, "Close") in raw.columns:
-                s = raw[(t, "Close")].dropna()
-                if len(s):
-                    closes[t] = s
+            for field in _OHLCV_FIELDS:
+                if (t, field) in raw.columns:
+                    s = raw[(t, field)].dropna()
+                    if len(s):
+                        out[field][t] = s
     else:
-        s = raw["Close"].dropna() if "Close" in raw.columns else pd.Series(dtype=float)
-        if len(s):
-            closes[tickers[0]] = s
-    return closes
+        # Single-ticker download flattens columns.
+        if tickers:
+            t = tickers[0]
+            for field in _OHLCV_FIELDS:
+                if field in raw.columns:
+                    s = raw[field].dropna()
+                    if len(s):
+                        out[field][t] = s
+    return out
 
 
-def _download_prices(tickers: list[str]) -> pd.DataFrame:
-    """Download adjusted closes via yfinance. Returns date x ticker DataFrame."""
+def _download_panel(tickers: list[str]) -> dict[str, pd.DataFrame]:
+    """Download adjusted OHLCV via yfinance. Returns {field_lower: date×ticker DataFrame}."""
     print(f"Downloading {len(tickers)} tickers from {START_DATE} to {VAL_END_DATE}...")
-    closes = _download_batch(tickers, threads=True)
+    out = _download_batch(tickers, threads=True)
 
     # Retry any missing tickers serially (yfinance's sqlite cache locks under parallelism).
-    missing = [t for t in tickers if t not in closes]
+    missing = [t for t in tickers if t not in out["Close"]]
     if missing:
         print(f"Retrying {len(missing)} missing tickers serially: {missing}")
         retry = _download_batch(missing, threads=False)
-        closes.update(retry)
+        for field, series_map in retry.items():
+            out[field].update(series_map)
 
-    prices = pd.DataFrame(closes)
-    if prices.index.tz is not None:
-        prices.index = prices.index.tz_localize(None)
-    prices.index = pd.to_datetime(prices.index)
-    prices = prices.sort_index().dropna(axis=1, how="all")
+    panels: dict[str, pd.DataFrame] = {}
+    for field in _OHLCV_FIELDS:
+        df = pd.DataFrame(out[field])
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index().dropna(axis=1, how="all")
+        panels[field.lower()] = df
 
-    final_missing = [t for t in tickers if t not in prices.columns]
+    final_missing = [t for t in tickers if t not in panels["close"].columns]
     if final_missing:
         print(f"WARNING: no data for {len(final_missing)} tickers (likely delisted): {final_missing}")
 
-    # Sanity check: print the 10 largest single-day |returns| across the
-    # panel. Most will be legit (March 2020 crash, earnings, etc.). A
-    # stray 500% bar almost always signals a corporate-action artifact
-    # (unadjusted split, bad dividend) worth investigating by hand.
+    # Sanity check on close: top 10 absolute daily returns. Stray 500% bars
+    # usually signal a corporate-action artifact (unadjusted split, bad div).
     try:
-        rets = prices.pct_change().abs()
+        rets = panels["close"].pct_change().abs()
         flat = rets.stack()
         if len(flat):
             top = flat.nlargest(10)
@@ -358,27 +391,138 @@ def _download_prices(tickers: list[str]) -> pd.DataFrame:
     except Exception as e:
         print(f"(corp-action audit skipped: {e})")
 
-    return prices
+    return panels
+
+
+def _all_ohlcv_caches_exist() -> bool:
+    return all(p.exists() for p in _FIELD_TO_PARQUET.values())
+
+
+def _ensure_ohlcv_caches(refresh: bool = False) -> None:
+    """Make sure all OHLCV parquets exist on disk for UNIVERSE_TAG.
+
+    If `refresh` is False, the existing close cache is preserved even when
+    other fields are missing — re-downloading would silently shift prior
+    backtest results because yfinance's corporate-action data updates over
+    time. To force a full refresh of all 5 fields, pass `--refresh`.
+    """
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    if not refresh and _all_ohlcv_caches_exist():
+        return
+    close_exists = PRICES_PARQUET.exists()
+    tickers = load_universe()
+    panels = _download_panel(tickers)
+    for field, path in _FIELD_TO_PARQUET.items():
+        # Preserve the existing close cache unless --refresh is explicit, so
+        # adding new fields to an existing universe does not invalidate prior
+        # cached Sharpes.
+        if field == "close" and close_exists and not refresh:
+            continue
+        df = panels.get(field)
+        if df is None:
+            continue
+        df.to_parquet(path)
+    n_rows = panels["close"].shape[0]
+    n_cols = panels["close"].shape[1]
+    print(f"Cached OHLCV ({n_rows} rows × {n_cols} tickers, 5 fields) to {CACHE_DIR}")
+
+
+def _read_field_parquet(path: Path) -> pd.DataFrame:
+    df = pd.read_parquet(path)
+    df.index = pd.to_datetime(df.index)
+    return df
 
 
 def load_prices(refresh: bool = False) -> pd.DataFrame:
-    """
-    Load adjusted close prices (date × ticker) for the universe.
+    """Adjusted close prices (date × ticker) for the universe.
 
-    First call (or refresh=True) downloads from yfinance and writes parquet cache.
-    Subsequent calls read the cache.
+    Triggers a one-time OHLCV download if any feature cache is missing.
+    Existing close caches are preserved on backfill so prior backtest
+    results stay reproducible — pass refresh=True (or `--refresh` on the
+    CLI) to force a full re-download of all five fields.
+    """
+    _ensure_ohlcv_caches(refresh=refresh)
+    return _read_field_parquet(PRICES_PARQUET)
+
+
+def load_open(refresh: bool = False) -> pd.DataFrame:
+    """Adjusted opens (date × ticker)."""
+    _ensure_ohlcv_caches(refresh=refresh)
+    return _read_field_parquet(OPEN_PARQUET)
+
+
+def load_high(refresh: bool = False) -> pd.DataFrame:
+    """Adjusted intraday highs (date × ticker)."""
+    _ensure_ohlcv_caches(refresh=refresh)
+    return _read_field_parquet(HIGH_PARQUET)
+
+
+def load_low(refresh: bool = False) -> pd.DataFrame:
+    """Adjusted intraday lows (date × ticker)."""
+    _ensure_ohlcv_caches(refresh=refresh)
+    return _read_field_parquet(LOW_PARQUET)
+
+
+def load_volume(refresh: bool = False) -> pd.DataFrame:
+    """Split-adjusted daily share volume (date × ticker).
+
+    Useful as a raw liquidity signal. For dollar liquidity, prefer
+    `load_dollar_volume()` (close × volume) — comparing share volume across
+    a $5 microcap and a $500 megacap directly would be meaningless.
+    """
+    _ensure_ohlcv_caches(refresh=refresh)
+    return _read_field_parquet(VOLUME_PARQUET)
+
+
+def load_dollar_volume(refresh: bool = False) -> pd.DataFrame:
+    """Daily dollar volume (date × ticker) = close × volume.
+
+    The canonical liquidity proxy for cross-sectional sizing — execution
+    capacity scales with dollar volume, not share volume. Common uses:
+    liquidity-weighted sizing, illiquid-name screen, ADV-based gross caps.
+    """
+    _ensure_ohlcv_caches(refresh=refresh)
+    close = _read_field_parquet(PRICES_PARQUET)
+    volume = _read_field_parquet(VOLUME_PARQUET)
+    return close * volume
+
+
+def load_panel(refresh: bool = False) -> dict[str, pd.DataFrame]:
+    """Full OHLCV panel + dollar_volume as a dict of DataFrames.
+
+    Keys: open, high, low, close, volume, dollar_volume.
+
+    Use this when a strategy needs multiple fields together (e.g. daily
+    range = (high - low) / close, overnight return = open / close.shift(1) - 1,
+    Garman-Klass realized vol). Reads from disk once per field.
+    """
+    _ensure_ohlcv_caches(refresh=refresh)
+    panel = {field: _read_field_parquet(path) for field, path in _FIELD_TO_PARQUET.items()}
+    panel["dollar_volume"] = panel["close"] * panel["volume"]
+    return panel
+
+
+def load_market_proxy(refresh: bool = False) -> pd.Series:
+    """Adjusted close of the broad-market reference (default SPY).
+
+    Use for regime gating (drawdown from peak, 200d MA filter), beta
+    neutralization (regress per-name returns on market returns), or
+    excess-return residualization. The series is universe-agnostic — it
+    is downloaded once per MARKET_PROXY_TICKER and shared across all
+    universes that load it.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    if PRICES_PARQUET.exists() and not refresh:
-        prices = pd.read_parquet(PRICES_PARQUET)
-        prices.index = pd.to_datetime(prices.index)
-        return prices
+    if MARKET_PROXY_PARQUET.exists() and not refresh:
+        df = pd.read_parquet(MARKET_PROXY_PARQUET)
+        df.index = pd.to_datetime(df.index)
+        return df.iloc[:, 0]
 
-    tickers = load_universe()
-    prices = _download_prices(tickers)
-    prices.to_parquet(PRICES_PARQUET)
-    print(f"Cached {prices.shape[0]} rows × {prices.shape[1]} tickers to {PRICES_PARQUET}")
-    return prices
+    panels = _download_panel([MARKET_PROXY_TICKER])
+    s = panels["close"].iloc[:, 0] if not panels["close"].empty else pd.Series(dtype=float)
+    s.name = MARKET_PROXY_TICKER
+    s.to_frame().to_parquet(MARKET_PROXY_PARQUET)
+    print(f"Cached market proxy {MARKET_PROXY_TICKER}: {len(s)} rows -> {MARKET_PROXY_PARQUET}")
+    return s
 
 # ---------------------------------------------------------------------------
 # Date slicing helpers
@@ -1101,8 +1245,9 @@ def print_summary(results: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepare price cache for karpathy-quant-auto-research")
-    parser.add_argument("--refresh", action="store_true", help="Force re-download even if cache exists")
+    parser = argparse.ArgumentParser(description="Prepare price + OHLCV + market proxy cache for karpathy-quant-auto-research")
+    parser.add_argument("--refresh", action="store_true", help="Force re-download even if cache exists (rewrites all 5 OHLCV fields and the market proxy)")
+    parser.add_argument("--skip-market-proxy", action="store_true", help="Skip downloading the broad-market reference (SPY by default)")
     args = parser.parse_args()
 
     print(f"Cache directory: {CACHE_DIR}")
@@ -1110,6 +1255,15 @@ def main():
     prices = load_prices(refresh=args.refresh)
     print(f"Loaded prices: {prices.shape[0]} rows x {prices.shape[1]} tickers")
     print(f"Date range:    {prices.index.min().date()} -> {prices.index.max().date()}")
+    volume = load_volume(refresh=False)  # already populated by load_prices on first run
+    nz = float((volume > 0).values.mean()) if volume.size else 0.0
+    print(f"Loaded volume: {volume.shape[0]} rows x {volume.shape[1]} tickers ({nz*100:.1f}% non-zero cells)")
+    if not args.skip_market_proxy:
+        proxy = load_market_proxy(refresh=args.refresh)
+        if len(proxy):
+            print(f"Loaded market proxy {MARKET_PROXY_TICKER}: {len(proxy)} rows ({proxy.index.min().date()} -> {proxy.index.max().date()})")
+        else:
+            print(f"WARNING: market proxy {MARKET_PROXY_TICKER} download empty")
     print("Done! Ready to experiment.")
 
 
