@@ -1,6 +1,6 @@
 ---
-description: Fan out autoresearch across all universes (sp100/sp400/sp500/ndx100/xbi_2026/gdxj_2026/xlk_2026) in parallel — one subagent per universe
-argument-hint: [optional comma-separated subset] — e.g. sp100,sp500 — leave blank for all seven
+description: Fan out autoresearch across all universes (sp100/sp400/sp500/sp600/ndx100/xbi_2026/xlk_2026/gdxj_2026) in parallel — one subagent per universe
+argument-hint: [optional comma-separated subset] — e.g. sp100,sp500 — leave blank for all eight
 ---
 
 Spawn parallel quant-autoresearch runs via the `quant-autoresearch-all` skill.
@@ -8,7 +8,7 @@ Spawn parallel quant-autoresearch runs via the `quant-autoresearch-all` skill.
 Arguments passed to this command: $ARGUMENTS
 
 Interpretation:
-- If `$ARGUMENTS` is empty, run all seven known universes: `sp100_2024`, `sp400_2024`, `sp500_2024`, `ndx100_2024`, `xbi_2026`, `gdxj_2026`, `xlk_2026`.
+- If `$ARGUMENTS` is empty, run all eight known universes: `sp100_2024`, `sp400_2024`, `sp500_2024`, `sp600_2024`, `ndx100_2024`, `xbi_2026`, `xlk_2026`, `gdxj_2026`.
 - If `$ARGUMENTS` is a comma-separated list (e.g. `sp100,sp500`), run only those. Normalize bare tags (`sp500` → `sp500_2024`) by matching against `universe_*.json` in the repo root.
 
 Follow the `quant-autoresearch-all` skill end-to-end:

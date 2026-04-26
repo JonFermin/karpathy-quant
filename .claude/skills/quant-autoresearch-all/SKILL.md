@@ -1,6 +1,6 @@
 ---
 name: quant-autoresearch-all
-description: Use when the user asks to run autoresearch across ALL universes (sp100, sp400, sp500, ndx100, xbi_2026, gdxj_2026, xlk_2026) or any multi-universe subset in parallel. Spawns one general-purpose subagent per universe, each running the `quant-autoresearch` skill end-to-end in its own git worktree with a pre-assigned unique timestamp tag. Default is all seven known universes; pass a comma-separated subset to narrow. Triggers on phrases like "all possible universes", "run autoresearch on all universes", "every universe in parallel", "sp100/sp400/sp500/ndx100/xbi/gdxj/xlk".
+description: Use when the user asks to run autoresearch across ALL universes (sp100, sp400, sp500, sp600, ndx100, xbi_2026, xlk_2026, gdxj_2026) or any multi-universe subset in parallel. Spawns one general-purpose subagent per universe, each running the `quant-autoresearch` skill end-to-end in its own git worktree with a pre-assigned unique timestamp tag. Default is all eight known universes; pass a comma-separated subset to narrow. Triggers on phrases like "all possible universes", "run autoresearch on all universes", "every universe in parallel", "sp100/sp400/sp500/sp600/ndx100/xbi/xlk/gdxj".
 ---
 
 # quant-autoresearch-all
@@ -9,15 +9,18 @@ Fan out the `quant-autoresearch` skill across multiple universes in parallel. On
 
 ## Default universes
 
-Unless the invoker names a subset, run all seven:
+Unless the invoker names a subset, run all eight:
 
-- `sp100_2024`
-- `sp400_2024`
-- `sp500_2024`
-- `ndx100_2024`
-- `xbi_2026`
-- `gdxj_2026`
-- `xlk_2026`
+- `sp100_2024` — large-cap US equities
+- `sp400_2024` — mid-cap US equities
+- `sp500_2024` — broad large-cap US equities
+- `sp600_2024` — small-cap US equities
+- `ndx100_2024` — Nasdaq 100 (mega-cap tech-heavy)
+- `xbi_2026` — biotech (SPDR S&P Biotech ETF holdings, event-driven)
+- `xlk_2026` — technology sector (SPDR Technology Select Sector ETF holdings)
+- `gdxj_2026` — junior gold miners (VanEck Junior Gold Miners ETF holdings, commodity-linked)
+
+The canonical list is whatever `universe_*.json` files are present in the repo root — if the human adds a new universe JSON + price cache, treat it as part of the default set going forward.
 
 A subset can be passed as a comma-separated list (e.g. `sp100,sp500`). Normalize to the full `<tag>_<year>` form using the `universe_<tag>.json` files present in the repo root — if the bare name is ambiguous (e.g. `sp400` → `sp400_2024`), always prefer the most recent year present.
 
@@ -49,7 +52,7 @@ Build N tags by incrementing the current epoch one second at a time, then format
 ```bash
 git fetch origin --prune                          # pull remote branches so collision check sees sister CC instances
 BASE_EPOCH=$(date +%s)
-N=5                                               # replace with actual number of universes requested
+N=8                                               # replace with actual number of universes requested (default 8)
 TAGS=()
 for i in $(seq 0 $((N-1))); do
   TAGS+=("$(date -d "@$((BASE_EPOCH + i))" +%m%d-%H%M%S)")
