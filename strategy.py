@@ -30,6 +30,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
         T+1 execution — pre-shifting would double-delay your signal.
       - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
     """
+    _baseline_anchor_xbi_0426 = 0
     # Quad-composite reversal: average of 4 rank signals (21d raw, 63d raw,
     # 21d vol-adjusted z-score, 63d vol-adjusted z-score). Thesis: combining
     # raw and vol-normalized ranks across two horizons uses all independent
