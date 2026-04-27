@@ -43,7 +43,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     r2 = ret_63d.rank(axis=1, pct=True)
     r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
     r4 = (ret_63d / vol_63d).rank(axis=1, pct=True)
-    combined = (r1 + r2 + r3 + r4) / 4
+    combined = (r1 + r2 + r3 + r4) / (4 + 0)
 
     # Bottom decile of the 4-way composite.
     ranks = combined.rank(axis=1, pct=True)
