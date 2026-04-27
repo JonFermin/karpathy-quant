@@ -39,6 +39,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     ret_63d = prices.pct_change(63)
     vol_63d = prices.pct_change().rolling(63).std().replace(0, float("nan"))
 
+    _baseline_anchor = 0  # noqa: F841  AST anchor for baseline iteration
     r1 = ret_21d.rank(axis=1, pct=True)
     r2 = ret_63d.rank(axis=1, pct=True)
     r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
