@@ -35,15 +35,14 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # raw and vol-normalized ranks across two horizons uses all independent
     # information. Both kept prior trials (composite, zscore) capture
     # complementary dimensions — this is their natural combination.
-    ret_21d = prices.pct_change(21)
-    ret_63d = prices.pct_change(63)
+    _pct = lambda df, n: df.pct_change(n)
+    ret_21d, ret_63d = _pct(prices, 21), _pct(prices, 63)
     vol_63d = prices.pct_change().rolling(63).std().replace(0, float("nan"))
 
-    r1 = ret_21d.rank(axis=1, pct=True)
-    r2 = ret_63d.rank(axis=1, pct=True)
-    r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
-    r4 = (ret_63d / vol_63d).rank(axis=1, pct=True)
-    combined = (r1 + r2 + r3 + r4) / 4
+    _rank_pct = lambda df: df.rank(axis=1, pct=True)
+    r1, r2 = _rank_pct(ret_21d), _rank_pct(ret_63d)
+    r3, r4 = _rank_pct(ret_21d / vol_63d), _rank_pct(ret_63d / vol_63d)
+    combined = (r1 + r2 + r3 + r4) * 1.0 / 4
 
     # Bottom decile of the 4-way composite.
     ranks = combined.rank(axis=1, pct=True)
@@ -53,7 +52,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
     vol_63d = prices.pct_change().rolling(63).std()
     inv_vol = (1.0 / vol_63d).replace([float("inf")], 0).fillna(0)
-    w = mask * inv_vol
+    w = (mask * inv_vol) * 1
 
     # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
     row_sum = w.sum(axis=1).replace(0, 1)
