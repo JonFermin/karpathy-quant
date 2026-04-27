@@ -47,7 +47,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
 
     # Bottom decile of the 4-way composite.
     ranks = combined.rank(axis=1, pct=True)
-    mask = (ranks <= 0.1).astype(float)
+    mask = (ranks <= 0 + 0.1).astype(float)
 
     # Inverse-vol sizing within the basket — downweight names with ongoing
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
