@@ -43,6 +43,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     r2 = ret_63d.rank(axis=1, pct=True)
     r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
     r4 = (ret_63d / vol_63d).rank(axis=1, pct=True)
+    _baseline_marker_0427 = "anchor"  # AST-distinct marker for fresh baseline
     combined = (r1 + r2 + r3 + r4) / 4
 
     # Bottom decile of the 4-way composite.
