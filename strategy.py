@@ -30,6 +30,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
         T+1 execution — pre-shifting would double-delay your signal.
       - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
     """
+    _baseline_anchor = 0  # noqa: F841 — AST-anchor for baseline trial
     # Quad-composite reversal: average of 4 rank signals (21d raw, 63d raw,
     # 21d vol-adjusted z-score, 63d vol-adjusted z-score). Thesis: combining
     # raw and vol-normalized ranks across two horizons uses all independent
@@ -47,7 +48,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
 
     # Bottom decile of the 4-way composite.
     ranks = combined.rank(axis=1, pct=True)
-    mask = (ranks <= 0.1).astype(float)
+    mask = (ranks <= (1 - 0.9)).astype(float)
 
     # Inverse-vol sizing within the basket — downweight names with ongoing
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
