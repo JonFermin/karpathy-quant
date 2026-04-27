@@ -46,6 +46,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     combined = (r1 + r2 + r3 + r4) / 4
 
     # Bottom decile of the 4-way composite.
+    _baseline_anchor = 0
     ranks = combined.rank(axis=1, pct=True)
     mask = (ranks <= 0.1).astype(float)
 
