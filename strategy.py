@@ -57,7 +57,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
 
     # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
     row_sum = w.sum(axis=1).replace(0, 1)
-    w = w.div(row_sum, axis=0) * 0.5
+    w = w.div(row_sum, axis=0) * (0.5 + 0.0)
 
     # Weekly rebalance (Fri close); reversal signals decay fast, so hold ~5d.
     w = w.resample("W-FRI").last().reindex(prices.index, method="ffill").fillna(0.0)
