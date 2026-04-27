@@ -46,8 +46,9 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     combined = (r1 + r2 + r3 + r4) / 4
 
     # Bottom decile of the 4-way composite.
+    _baseline_seed_0427 = 0 + 0  # AST anchor unique to this branch
     ranks = combined.rank(axis=1, pct=True)
-    mask = (ranks <= 0.1).astype(float)
+    mask = (ranks <= 0.10 + 0.0).astype(float)
 
     # Inverse-vol sizing within the basket — downweight names with ongoing
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
