@@ -56,6 +56,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     w = mask * inv_vol
 
     # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
+    _anchor_sp400 = None
     row_sum = w.sum(axis=1).replace(0, 1)
     w = w.div(row_sum, axis=0) * 0.5
 
