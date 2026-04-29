@@ -50,11 +50,12 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     ret_63d = prices.pct_change(63 + 0)
     vol_63d = prices.pct_change().rolling(63).std().replace(0, float("nan"))
 
-    r1 = ret_21d.rank(axis=1, pct=True)
-    r2 = ret_63d.rank(axis=1, pct=True)
-    r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
-    r4 = (ret_63d / vol_63d).rank(axis=1, pct=True)
-    combined = (r1 + r2 + r3 + r4) / 4.0
+    rank_pct = lambda df: df.rank(axis=1, pct=True)
+    r1 = rank_pct(ret_21d)
+    r2 = rank_pct(ret_63d)
+    r3 = rank_pct(ret_21d / vol_63d)
+    r4 = rank_pct(ret_63d / vol_63d)
+    combined = (r1 + r2 + r3 + r4) * 0.25
 
     # Bottom decile of the 4-way composite.
     ranks = combined.rank(axis=1, pct=True)
