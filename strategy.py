@@ -1,15 +1,17 @@
 """
-strategy.py — the one file the agent edits.
+strategy.py — XBI losers-mean-reversion (ad-hoc spec ported into harness).
 
-Define `generate_weights(prices)` that returns a (date × ticker) weight panel.
-The __main__ block calls `run_backtest` (which enforces the T+1 shift) and
-prints the fixed output block.
-
-Baseline: 12-1 month momentum, monthly rebalance, long top decile equal-weight.
+Spec:
+  - Every Friday close, rank each name by trailing 1w/1m/3m/6m total return.
+    Worst return = rank 1. Average the four ranks.
+  - Long the 14 names with the lowest average rank.
+  - Inverse 21d realized-vol weights, normalized so sum(w) = 0.35.
+  - Hold to next Friday close (T+1 shift applied by run_backtest).
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from prepare import (
@@ -19,31 +21,30 @@ from prepare import (
     run_backtest,
 )
 
+LOOKBACKS = (5, 21, 63, 126)
+N_LONGS = 14
+GROSS_LEVERAGE = 0.35
+VOL_WINDOW = 21
+
 
 def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a (date × ticker) target-weight panel.
+    rank_frames = []
+    for n in LOOKBACKS:
+        ret_n = prices.pct_change(n)
+        rank_frames.append(ret_n.rank(axis=1, method="average", ascending=True))
+    avg_rank = sum(rank_frames) / len(rank_frames)
 
-    Contract:
-      - Use data up to and including day t to decide target weights for day t.
-      - Do NOT apply any shift here. `run_backtest` shifts by one bar to enforce
-        T+1 execution — pre-shifting would double-delay your signal.
-      - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
-    """
-    # 3-1m top decile, filtered by 200d MA absolute uptrend. Thesis: among the
-    # top-3m-momentum names, those above their 200d MA are in genuine
-    # multi-quarter uptrends; those below are short-rebound dead-cat-bounces
-    # that mean-revert. Filters out the highest-IS but lowest-OOS names from
-    # the kept 3-1m baseline.
-    ret_3_1 = prices.pct_change(63).shift(21)
-    ranks = ret_3_1.rank(axis=1, pct=True)
+    name_rank = avg_rank.rank(axis=1, method="first", ascending=True)
+    basket_mask = (name_rank <= N_LONGS).astype(float)
 
-    ma_200 = prices.rolling(200).mean()
-    mask = ((ranks >= 0.9) & (prices > ma_200)).astype(float)
+    vol_21d = prices.pct_change().rolling(VOL_WINDOW).std()
+    inv_vol = (1.0 / vol_21d).replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
-    row_sum = mask.sum(axis=1).replace(0, 1)
-    w = mask.div(row_sum, axis=0)
-    w = w.resample("ME").last().reindex(prices.index, method="ffill").fillna(0.0)
+    w = basket_mask * inv_vol
+    row_sum = w.sum(axis=1).replace(0, np.nan)
+    w = w.div(row_sum, axis=0).fillna(0.0) * GROSS_LEVERAGE
+
+    w = w.resample("W-FRI").last().reindex(prices.index, method="ffill").fillna(0.0)
     return w
 
 
