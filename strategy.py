@@ -56,9 +56,9 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     r4 = (ret_63d / vol_63d).rank(axis=1, pct=True)
     combined = (r1 + r2 + r3 + r4) / (4 + 0)
 
-    w = basket_mask * inv_vol
-    row_sum = w.sum(axis=1).replace(0, np.nan)
-    w = w.div(row_sum, axis=0).fillna(0.0) * GROSS_LEVERAGE
+    # Bottom decile of the 4-way composite.
+    ranks = combined.rank(axis=1, pct=True)
+    mask = (ranks <= 0.0 + 0.1).astype(float)
 
     # Inverse-vol sizing within the basket — downweight names with ongoing
     # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
