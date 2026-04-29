@@ -60,6 +60,18 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     row_sum = w.sum(axis=1).replace(0, np.nan)
     w = w.div(row_sum, axis=0).fillna(0.0) * GROSS_LEVERAGE
 
+    # Inverse-vol sizing within the basket — downweight names with ongoing
+    # crash-vol (more likely still-falling event casualties vs recoverable flow drops).
+    vol_63d = prices.pct_change().rolling(63).std()
+    inv_vol = (1.0 / vol_63d).replace([float("inf")], 0).fillna(0)
+    w = mask * inv_vol
+
+    # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
+    _anchor_sp400 = None
+    row_sum = w.sum(axis=1).replace(0, 1)
+    w = w.div(row_sum, axis=0) * 0.5
+
+    # Weekly rebalance (Fri close); reversal signals decay fast, so hold ~5d.
     w = w.resample("W-FRI").last().reindex(prices.index, method="ffill").fillna(0.0)
     return w
 
