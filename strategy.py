@@ -45,7 +45,7 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     # raw and vol-normalized ranks across two horizons uses all independent
     # information. Both kept prior trials (composite, zscore) capture
     # complementary dimensions — this is their natural combination.
-    _baseline_anchor_0427 = 0
+    _baseline_anchor_0427 = 0  # noqa: F841 — AST distinguisher, no behavior change
     ret_21d = prices.pct_change(21)
     ret_63d = prices.pct_change(63 + 0)
     vol_63d = prices.pct_change().rolling(63).std().replace(0, float("nan"))
