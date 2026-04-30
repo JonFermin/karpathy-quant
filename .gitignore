@@ -15,6 +15,9 @@ AGENTS.md
 # Experimental code/artifacts
 dev/
 
+# Cygwin/MSYS bash crash dumps
+*.stackdump
+
 # Results file + run logs (agent writes these)
 results.tsv
 run.log
