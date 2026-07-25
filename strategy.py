@@ -1,12 +1,10 @@
 """
-strategy.py — XBI losers-mean-reversion (ad-hoc spec ported into harness).
+strategy.py — quad-composite short-horizon reversal.
 
-Spec:
-  - Every Friday close, rank each name by trailing 1w/1m/3m/6m total return.
-    Worst return = rank 1. Average the four ranks.
-  - Long the 14 names with the lowest average rank.
-  - Inverse 21d realized-vol weights, normalized so sum(w) = 0.35.
-  - Hold to next Friday close (T+1 shift applied by run_backtest).
+Average of 4 rank signals (21d raw, 63d raw, 21d vol-adjusted, 63d vol-adjusted),
+long the bottom decile of the composite, inverse-63d-vol sizing, gross 0.5,
+weekly (Fri close) rebalance. T+1 shift is applied by run_backtest — do NOT
+pre-shift here.
 """
 
 from __future__ import annotations
@@ -21,36 +19,16 @@ from prepare import (
     run_backtest,
 )
 
-LOOKBACKS = (5, 21, 63, 126)
-N_LONGS = 14
-GROSS_LEVERAGE = 0.35
-VOL_WINDOW = 21
-
 
 def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
-    rank_frames = []
-    for n in LOOKBACKS:
-        ret_n = prices.pct_change(n)
-        rank_frames.append(ret_n.rank(axis=1, method="average", ascending=True))
-    avg_rank = sum(rank_frames) / len(rank_frames)
-
-    Contract:
-      - Use data up to and including day t to decide target weights for day t.
-      - Do NOT apply any shift here. `run_backtest` shifts by one bar to enforce
-        T+1 execution — pre-shifting would double-delay your signal.
-      - Row sums represent gross leverage; keep it ≤ 1 unless you know what you're doing.
-    """
     # Quad-composite reversal: average of 4 rank signals (21d raw, 63d raw,
-    # 21d vol-adjusted z-score, 63d vol-adjusted z-score). Thesis: combining
-    # raw and vol-normalized ranks across two horizons uses all independent
-    # information. Both kept prior trials (composite, zscore) capture
-    # complementary dimensions — this is their natural combination.
-    _baseline_anchor_0427 = 0  # noqa: F841 — AST distinguisher, no behavior change
+    # 21d vol-adjusted z-score, 63d vol-adjusted z-score). Combining raw and
+    # vol-normalized ranks across two horizons uses complementary information.
+    _baseline_anchor_0724 = 0  # noqa: F841 — AST distinguisher, no behavior change
     ret_21d = prices.pct_change(21)
     ret_63d = prices.pct_change(63 + 0)
     vol_63d = prices.pct_change().rolling(63).std().replace(0, float("nan"))
 
-    _baseline_anchor = 0  # noqa: F841  AST anchor for baseline iteration
     r1 = ret_21d.rank(axis=1, pct=True)
     r2 = ret_63d.rank(axis=1, pct=True)
     r3 = (ret_21d / vol_63d).rank(axis=1, pct=True)
@@ -69,7 +47,6 @@ def generate_weights(prices: pd.DataFrame) -> pd.DataFrame:
     w = mask * inv_vol
 
     # Per-row normalize to gross 0.5 (reduced leverage for volatile universes).
-    _anchor_sp400 = None
     row_sum = w.sum(axis=1).replace(0, 1)
     w = w.div(row_sum, axis=0) * 0.5
 
